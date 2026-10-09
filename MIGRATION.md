@@ -87,3 +87,19 @@ not copied. The generated URDF root label changed from the historical
 the extracted builder. Link emission order is now stable. This is a bounded
 description/generation slice, not an executable body, an integration-step
 authority, a physics substrate, or evidence of organism motor control.
+
+## Additional slice: body-pose observation value
+
+| Source element | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| `embodiment/src/embodiment/observation.py` — `BodyPoseSample` only | SPLIT | `src/embodiment/observation.py` | Source repository SHA `80d372a186513035f85a769db886e505cabba52d`; source file `embodiment/src/embodiment/observation.py`, last source-path commit at that baseline `409e1c2b19972722c09b848c8508a961a18d575d`; pinned source blob `027f312f9cf07279b4a4421b255448454578ecd2` (SHA-256 `a065368a56274ec2fbac9bacfa6145c43610525716443f504f5b66c4a782def1`). `BodyPoseSample` at source lines 229–281 was split from a mixed observation module and reconstructed with its validation helpers; the whole source module was not copied. Other types in the mixed source module were excluded; this slice does not claim to extract the remainder of that module. |
+| Focused BodyPoseSample checks | REWRITE | `tests/test_body_pose_sample.py` | Target-side checks for finite coordinate tuples, unit quaternion, sample time and frame-label preservation. |
+
+The `reference_frame` value `physics3d.world` is retained as a coordinate-frame
+label from the pinned contract. It is not a `WorldId`, world authority, or
+presence identity; `BodyPoseSample` has no World identity field. This extraction
+does not implement passive runtime projection, establish that any Physics3D
+runtime emits conforming samples, authorize publication, or validate physical
+correctness. `sample_time_s` is only a supplied sample attribute here; this
+value type does not make host wall-clock time causal authority. The original
+monorepo remains unchanged.
