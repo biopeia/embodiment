@@ -288,3 +288,87 @@ topology order remains constrained by the existing
 `ArticulatedBodySpec`/URDF builder contract; candidate state correspondence is
 by stable joint ID, not collection position. The source monorepo remains
 unchanged.
+
+## Pinned source inventory: apparatus/body models in `embodiment/physics3d`
+
+### Scope and decision status
+
+This inventory covers the 11 tracked Python files at source commit
+`80d372a186513035f85a769db886e505cabba52d` that were not already dispositioned
+in the mechanics, observation-contract, and articulated-description slices
+above: the package export facade plus ten body/apparatus modules. The three
+previously inventoried modules are intentionally not duplicated here.
+
+Every disposition below is a **candidate**, not a final migration authorization.
+The TARGET authority boundaries used to form the candidates are ratified:
+Embodiment owns body truth; Modality owns transduction contracts; solver
+implementations are numerical capabilities, not semantic authorities; World
+coordinates and commits causal evolution; Observation is passive. The exact
+module/symbol allocations below have not been separately accepted. In
+particular, this table authorizes neither copying code nor removing it from the
+historical source. No backward-compatibility API or shim is proposed. No `DROP`
+is recommended on the evidence inspected here.
+
+The provenance column gives `last source-path commit / pinned Git blob` at the
+source SHA above. Source paths are relative to `symbiont-lab` and target paths
+are relative to the named Biopeia repository. `TBD` means that no target path is
+selected by this inventory.
+
+| Source file and top-level material symbols | Candidate disposition and target owner/path | Source provenance | Consumers, tests, evidence and caveats; closure trigger |
+| --- | --- | --- | --- |
+| `embodiment/src/embodiment/physics3d/__init__.py`: package facade (docstring only; no executable exports at the pin) | **SPLIT** candidate; keep only exports of accepted target contracts in `embodiment`, path TBD. Do not preserve package-level import compatibility merely for the source API. | `13720935595fedabec2c376dc933629b0deae5aa` / `a4d580f27367fb6831584d06a08bf87c4ead1cca` | Pinned file has no imported names or definitions. Close when the per-symbol target surface is known; otherwise `DROP` may be appropriate for this empty historical facade, subject to checking target import needs. |
+| `asymmetric.py`: `_deg`, `ASYMMETRIC_JOINT_SPECS`, `ASYMMETRIC_SEGMENTS`, `ASYMMETRIC_TOPOLOGY`, `ASYMMETRIC_SPEC`, `AsymmetricPhysics` | **SPLIT** candidate: engine-neutral morphology description to an Embodiment-owned descriptor module (path TBD); solver-bound class to the physical solver adapter/capability (repository/path TBD). | `84e55453f0b3e3889be7c65e8a61e72af337faa7` / `536520e2ea4fd8108d9147069b023c41dc9942f5` | Consumed by source `physics3d/bodies.py`, Lab integration/runtime and `lab/physics3d/effective_model_audit_cli.py`; tested with alternatives in `embodiment/tests/unit/lab/physics3d/test_alternative_bodies.py`. Geometry and parameters are source implementation, not evidence of calibration. Close after checking model purpose, scale/units/frames and actual downstream consumers; do not retain the solver class as Embodiment authority. |
+| `bodies.py`: `BodyDescriptor`, `BodyRegistry`, `ANTHROPOMORPHIC_V6`, `CRAWLER_V1`, `SPOT_INSPIRED_V1`, `ASYMMETRIC_V1`, `HEXAPOD_V1`, `ROBOTIC_ARM_V1`, `vision_body_descriptor` | **SPLIT** candidate: stable, revision-bound body/morphology descriptors to Embodiment (path TBD); apparatus-factory selection/composition to runtime or solver adapter (owner/path TBD); `as_dict()` observer-model projection to a passive projection/Observation boundary (path TBD). | `73dc9a8cc4cbd79192d42d77481988ca7be1feb7` / `2c12c549dc290a4d6508461ac69032161a7b03c3` | Directly imported by source `lab/src/lab/integration/physics3d/bodies.py`; related composition appears in `lab/src/lab/physics3d/runtime.py`. Source tests include `test_alternative_bodies.py` and `test_robotic_bodies.py`. Descriptor currently mixes opaque channel IDs, solver factories, observer geometry, display labels, and sensory capacity. Close with field-by-field consumers and identity/revision semantics; do not carry presentation labels into Organism cognition or use factory registration as morphology authority. |
+| `contracts.py`: `MotorPortPair`, `Physics3DAppliance` | **SPLIT / REWRITE** candidate: owner-side effector identity/command contract belongs to Embodiment; sensory transduction surface belongs at the Modality boundary; solver-facing numerical input/output belongs to a solver capability. No single target path proposed. | `66358c6e4f618f376cfdd495ec1f8a45c0b07baf` / `fa9b8d48ea49aa979f9e06ae130e44b1beefcd25` | Consumed by source `lab/src/lab/integration/physics3d/apparatus.py`. `Physics3DAppliance` combines receptor sampling, effector IDs and motor bindings in one runtime protocol. Compare with target `physics3d/actuation_projection.py`, `physical_projection.py`, and `physical_transition.py`; those target contracts already require stable effector identity and explicit physical semantics. Close only after separately tracing each protocol member and its units, ownership, omission behavior, and call sites. |
+| `crawler.py`: `_deg`, `CRAWLER_JOINT_SPECS`, `CRAWLER_SEGMENTS`, `CRAWLER_TOPOLOGY`, `CRAWLER_SPEC`, `CrawlerPhysics` | **SPLIT** candidate: anatomy/topology description to Embodiment (path TBD); numerical implementation to solver adapter/capability (repository/path TBD). | `84e55453f0b3e3889be7c65e8a61e72af337faa7` / `7f305f3263d8e6b375fd97998430fe6787d93aae` | Consumers include source `physics3d/bodies.py`, Lab runtime, and `effective_model_audit_cli.py`; tests in `test_alternative_bodies.py`. A crawler fixture appearing in tests does not make it canonical or production TARGET. Close after deciding whether its body specification has a current TARGET use and validating identity, dimensions, frames, and declared units; unused model may then receive a justified `DROP`. |
+| `hexapod.py`: `_deg`, `_LEGS`, `HEXAPOD_SPEC`, `HexapodPhysics` | **SPLIT** candidate on the same boundary: body/morphology description to Embodiment (path TBD), engine implementation to solver capability (path TBD). | `8a3d9e25f9ca192f1c8fdd4b25aed8ef22b45f5f` / `846cca1253d1a743bc0ae0aca6f206ee1dcab70a` | Consumed through `physics3d/bodies.py` and source Lab runtime; `test_robotic_bodies.py` asserts hexapod anatomy, while `test_alternative_bodies.py` exercises construction. The test assertions establish source behavior only, not that this morphology is required by Biopeia. Close after consumer/use-case review; preserve no ordinal mapping as authoritative identity. |
+| `humanoid.py`: `BODY_KIND`, `BODY_STATE_SCHEMA_VERSION`, solver/passive-tone constants, receptor-count constants; `physical_receptor_contract_ids`, `interoceptive_receptor_contract_ids`, `receptor_contract_ids`, `effector_contract_ids`; `JOINT_SPECS`, `JOINT_LIMITS`, `JOINT_AXES`, `_LEFT`, `_LEFT2`, `_RIGHT`, `_RIGHT2`, `SEGMENTS`, `JOINT_TOPOLOGY`, `CONTACT_LINK_NAMES`, `STRUCTURAL_NEIGHBOUR_NAMES`, `CYLINDRICAL_COLLISION_LINKS`; `_deg`, `_fmt`, `_box_inertia`, `_segment_link_xml`, `_carrier_link_xml`, `_cylinder_inertia`, `mechanical_joint_limits`, `build_anthropomorphic_urdf`, `_end_range_resistance`, `_neutral_rest_position`, `_passive_postural_tone`; `ANTHROPOMORPHIC_SPEC`; `HumanoidPhysics` | **SPLIT** candidate: owner-relevant morphology and stable part/effector descriptors to Embodiment (path TBD); sensory channel contracts/transduction to Modality as applicable; MuJoCo execution and state to solver capability (repository/path TBD). | `792d2dbd3e507d1d41300456cf826d8efe19fddb` / `d0d78278aa3fcfb80f16f534ee6437b6e4a82d7e` | Central consumer via source `bodies.py`, Lab runtime and apparatus; test evidence includes `test_dynamics.py`, `test_alternative_bodies.py`, `test_robotic_bodies.py`, plus downstream Lab tests. The file mixes anatomy, receptor/effector surfaces, solver settings, URDF projection and engine state schema. Source constants/schema labels do not themselves establish TARGET semantics or calibration. Close with symbol-level split, part identity + morphology revision, units/frame, and direct consumer/test mapping. |
+| `robotic_arm.py`: `_deg`, `ROBOTIC_ARM_JOINT_SPECS`, `ROBOTIC_ARM_SEGMENTS`, `ROBOTIC_ARM_TOPOLOGY`, `ROBOTIC_ARM_SPEC`, `RoboticArmPhysics` | **SPLIT** candidate: explicit articulated-body description to Embodiment (path TBD); engine implementation to numerical solver capability (path TBD). | `8a3d9e25f9ca192f1c8fdd4b25aed8ef22b45f5f` / `d0045302d5cac0cef038b32734f354d752621f79` | Consumed by source `bodies.py`, Lab runtime and effective-model audit; covered by `test_robotic_bodies.py` and `test_alternative_bodies.py`. Fixed-base semantics are part of this fixture, not a universal morphology rule. Close after confirming any required physical fixture and mapping it to target articulated descriptor identity, revisions, units and frames. |
+| `scene.py`: `DEFAULT_GRAVITY`, `PhysicsScene` (MuJoCo model/data, compilation, stepping, state, name lookup, and geometry primitives) | **REWRITE** candidate as numerical solver capability/configuration, outside Embodiment/Environment/World semantic authority; the geometry projection returned by `primitives()` needs separate passive-consumer review (Observation or apparatus adapter, path TBD). | `0f75c709bba8bfc9505a769662e9bf0e8e7e074a` / `0c1d848dd5022d85f5d3e1794be3868d485a69f3` | Direct source consumers include `lab/src/lab/physics3d/runtime.py`, `lab/src/lab/physics3d/effective_model_audit_cli.py`, and `test_alternative_bodies.py`/`test_dynamics.py`. MuJoCo scene compilation and stepping cannot become Environment or World ownership; solver/config revision and candidate adoption need explicit correlation. Close when solver boundary, scene inputs, outputs and projection consumers are identified; do not classify this implementation as a committed migration merely because MuJoCo is an approved initial solver candidate. |
+| `spot.py`: `_deg`, `_LEGS`, `SPOT_INSPIRED_SPEC`, `SpotInspiredPhysics` | **SPLIT** candidate: body description to Embodiment (path TBD); solver implementation to solver capability (path TBD). | `eed3c32abe9ace87dddc91d52150cf5acc874e4e` / `d0197bdee5ec1c1eff5a7922aff89494f618dfd0` | Consumed by source `bodies.py` and Lab runtime/audit; `test_alternative_bodies.py` exercises it. “Spot-inspired” is an approximation label, not a claim of equivalence to a commercial robot or calibrated hardware. Close after confirming target use and preserving that qualification; unused fixture may receive evidence-backed `DROP`. |
+| `vision.py`: `VISION_BODY_KIND`, `VISUAL_ARRAY_SIDE`, `VISUAL_RECEPTOR_COUNT`, `HEAD_MOUNT_LINK`, `HEAD_MOUNT_OFFSET`, `HEAD_MOUNT_GAZE_OFFSET`, `VISION_TOTAL_RECEPTOR_COUNT`, `_VISUAL_PERMUTATION_SEED`, `_visual_permutation`, `visual_receptor_contract_ids`, `vision_receptor_contract_ids`, `VisionHumanoidPhysics` | **SPLIT** candidate: physical head/mount/part morphology to Embodiment (path TBD); receptor identity/transduction and optical measurement behavior to Modality (path TBD); numerical mechanics to solver capability. Any passive rendering/observation projection remains separate. | `0f75c709bba8bfc9505a769662e9bf0e8e7e074a` / `8a7fe0591e7a5c938b32018a0252535aec59cab3` | Consumed through source `bodies.py`, `lab/src/lab/integration/physics3d/bodies.py` and Lab runtime; per-body budget is described in `ADR-0011` and its source test context. A receptor ID/permutation does not itself define a sensory semantic or authorize visual knowledge in Organism. Close after tracing sensor source, transducer, producer and semantic owner, and separating body geometry from sensory behavior. |
+
+### Directly relevant source tests and test disposition
+
+The following pinned tests are source evidence, not tests that were run for this
+documentation change. Their candidate disposition is **REWRITE** into owner- or
+capability-appropriate target tests; do not copy source tests wholesale merely
+to preserve implementation details. Solver execution/integration tests should
+live with the future solver/runtime capability or in workspace integration
+tests, not in the isolated Embodiment unit suite when they import other owners.
+
+| Source test | Relevant evidence | Candidate test disposition and closure condition |
+| --- | --- | --- |
+| `embodiment/tests/unit/lab/physics3d/test_alternative_bodies.py` | Tests URDF motor constitution and contract dimensions for crawler, Spot-inspired, asymmetric, humanoid, hexapod and arm; headless loading, settling, deterministic replay, engine checkpoint restoration, missing engine-state rejection, and fixed-base/root behavior. | **REWRITE**: keep pure morphology/identity/revision checks with Embodiment; put solver load/settling/replay/checkpoint assertions with the chosen solver capability; put cross-owner adoption/commit cases in workspace integration. Close after each assertion is traced to its target contract and any unsupported source-only behavior is explicitly dropped. |
+| `embodiment/tests/unit/lab/physics3d/test_robotic_bodies.py` | Checks six-legged/three-axis hexapod structure and the six-axis arm fixed base/flange. | **REWRITE** candidate as target morphology-description tests only if those fixtures remain selected; otherwise record evidence-backed `DROP` for the unused test/capability. Do not treat source fixtures as required TARGET bodies. |
+| `embodiment/tests/unit/lab/physics3d/test_dynamics.py` | Applies deterministic actuation and checks humanoid joint hard limits using `PhysicsScene`. | **REWRITE** candidate at the solver/cross-owner level. Target Embodiment must test owner-side rejection/adoption of candidate state independently of solver's numerical behavior. |
+| `embodiment/tests/test_self_contained.py` | Packaging/import isolation smoke test for the source `embodiment` package. | **REWRITE** only to test the target package's own isolation contract; its implementation-specific imports are not portable evidence. |
+
+Pinned-baseline consumer search also identified
+`lab/src/lab/app/physics3d/{monitor/converters.py,monitor/viewer.py,runs.py}`;
+`lab/src/lab/physics3d/runtime.py`;
+`lab/src/lab/integration/physics3d/{apparatus,bodies}.py`;
+`lab/src/lab/physics3d/effective_model_audit_cli.py`;
+`lab/src/lab/studies/learning/{embodied_counterfactual.py,embodied_intervention.py,embodied_sensorimotor_shadow.py,visual_acquisition.py}`;
+and `lab/src/lab/studies/physics3d/constitution_audit.py`, in addition to the
+listed source tests. These consumers establish that the source package served
+apparatus/runtime composition, monitoring, audits and experiments; they do not
+make those responsibilities Embodiment TARGET semantics. In the inspected
+Biopeia Embodiment checkout, no imports or tests currently consume the
+unresolved source names listed above. Existing target tests for
+`articulated_spec`, physical projection/transition, and articulated state cover
+narrower target contracts; they do not demonstrate migration or conformance of
+these source body models, registries, sensors, or solver scene.
+
+### Final-disposition rule
+
+All rows above remain **candidate disposition / owner review required**. A final
+inventory closure requires (1) exact source symbol and consumer review against
+the source SHA; (2) an explicit final `MOVE`, `SPLIT`, `REWRITE`, or `DROP` for
+each symbol/test, with target path or reason for no target; (3) appropriate
+target tests/evidence and caveats; and (4) a new inventory entry or update
+recording the resulting migration commit for any extracted implementation.
+`DEFER` is not final: if a symbol remains deferred, name the concrete trigger
+and revisit it before declaring Embodiment migration complete. Nothing in this
+candidate inventory reopens or changes the ratified World/Environment/solver
+authority boundaries.
