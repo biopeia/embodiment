@@ -170,3 +170,35 @@ Embodiment and prohibits Cognition and Foundation from importing or consuming
 it (`docs/design/core/temporal-scales-and-clock-separation-v1.md`, lines
 90–94 and 194–197). This candidate does not establish target-wide compliance
 or runtime conformance. The source monorepo remains unchanged.
+## Additional slice: owner command to physical-effector candidate (candidate)
+
+| Source element | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| Opaque `MotorCommand` / `ActuatorSurface` and current ordinal adapter behavior | REWRITE / COMPOSE | `src/embodiment/physics3d/actuation_projection.py` | Source provenance at pinned SHA `80d372a186513035f85a769db886e505cabba52d`: `symbiont/src/symbiont/actuation/action.py` and `surface.py` (path commit `13720935595fedabec2c376dc933629b0deae5aa`); `lab/src/lab/integration/physics3d/apparatus.py` (commit `792d2dbd3e507d1d41300456cf826d8efe19fddb`); `lab/src/lab/physics3d/runtime.py` (commit `5e9a250f103373ed1333c05f96bc2554abdf5020`); `embodiment/src/embodiment/physics3d/articulated.py` (commit `cea69ac01681811cce0ed23d87c514b9eb048fdb`). Current ordinal mapping and zero-default are source behavior only, not target authority. |
+| Owner-selected morphology and per-effector quantity contracts | NEW STRUCTURAL CONTRACT | `MorphologyLike`, `EffectorContractLike`, `ActuatorChannelLike` in `src/embodiment/physics3d/actuation_projection.py` | Require stable effector IDs, body ID, embodiment episode ID, morphology revision, command kind, quantity, unit, minimum, neutral, maximum, and explicit saturation policy. Only `reject` is implemented; no clipping or physical unit is invented. |
+| Focused projection tests | REWRITE | `tests/test_actuation_projection.py` | Checks stable-ID matching under permuted surface order, sparse omission, identity/revision binding, declared quantity/range/neutral/unit/saturation contracts, rejection, and malformed/duplicate mappings. |
+
+The target association is explicit: each command actuator ID resolves through
+the supplied active revision's surface to a stable effector ID; surface order
+has no mapping authority. The surface's schema is validated against the active
+morphology revision. Every emitted channel explicitly repeats `body_id`,
+`embodiment_episode_id`, `morphology_revision`, `effector_id`, and
+`command_kind`, as well as the value and its quantity/unit/range/neutral/
+saturation contract. Command, surface, active morphology, pose, and Embodiment
+checkpoint must agree on body, embodiment episode, and morphology revision.
+Out-of-range values are rejected; no clipping or saturation is inferred. A
+missing command channel remains absent and means no command; it is not
+converted to zero, neutral, hold, or another inferred action. Neutrality is
+available only as the effector descriptor's explicit `neutral` value and is
+not used as an omission default. The returned `PhysicalActuationCandidate` is
+sparse and immutable; it is not a solver result or somatic state transition.
+
+Remaining work is explicit: command producers and active-morphology/surface
+owners must supply these fields; this repository does not define which
+physical quantities/units a concrete simulator adapter uses. No solver-result
+candidate, owner validation/adoption transition, or World commit flow is
+implemented here. A future solver result must remain a candidate until
+Embodiment validates and adopts it, and World commit is required before it is
+treated as causally committed state. This slice neither runs a solver, mutates
+body truth, nor claims physical efficacy. It imports no Organism implementation
+at runtime; the source monorepo remains unchanged.
