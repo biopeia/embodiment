@@ -103,3 +103,19 @@ runtime emits conforming samples, authorize publication, or validate physical
 correctness. `sample_time_s` is only a supplied sample attribute here; this
 value type does not make host wall-clock time causal authority. The original
 monorepo remains unchanged.
+
+## Additional slice: body-local somatic cycle
+
+| Source element | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| `symbiont/src/symbiont/core/embodiment/body.py` — `Body.tick_physics()` behavior only | SPLIT / REWRITE | `src/embodiment/somatic_cycle.py` | Source repository SHA `80d372a186513035f85a769db886e505cabba52d`; source-path commit `13720935595fedabec2c376dc933629b0deae5aa`; pinned source blob `84d57d7a820070699314f3e21d0349da18751398` (SHA-256 `cbbdfd7e1d1e49f61266c0eaa1af05be1b9b00e1fb6971bdf2dc93599f2624ad`). The extracted rule preserves the source order: for a live body, debit basal energy, apply passive wear, then advance body-local age; a dead body is a no-op. Source defaults are retained (`0.005` and `0.0005`). The source caller is `symbiont/src/symbiont/core/orchestration/individual.py:187`, which invokes it from a mixed Organism/Modality/Embodiment step; that caller and its orchestration are not copied. |
+| Focused body-cycle checks | REWRITE | `tests/test_somatic_cycle.py` | Target-side tests cover rate validation, live and dead behavior, transition ordering, and bounded state effects. |
+
+This slice does not extract the aggregate `Body`, environmental damage authority,
+receptors, effectors, interoception, actuation, material transfer, World tick,
+or a solver. It preserves a source-backed body-local operation only; it does not
+claim that the source cycle is an empirically calibrated biological law or that
+the original mixed runtime satisfies TARGET contracts. `Body.apply_damage()`
+was not copied because its current behavior delegates to the already extracted
+`LivingBodyState.apply_wear()` path and adds no distinct somatic transition.
+The source monorepo remains unchanged.
