@@ -76,5 +76,21 @@ class EmbodimentCheckpoint:
         ledger = MetabolicLedger.from_checkpoint(ledger_payload, body_state=body_state)
         return cls(body_id, episode_id, body_state, ledger)
 
+    @classmethod
+    def validate_checkpoint(cls, encoded: bytes, owner_identity: str, schema_version: str) -> bool:
+        """Validate Embodiment-owned bytes without issuing a World receipt."""
+        if schema_version != "embodiment-checkpoint-v1":
+            return False
+        try:
+            checkpoint = cls.from_bytes(encoded)
+        except (TypeError, ValueError):
+            return False
+        return checkpoint.body_id == owner_identity
+
+    @classmethod
+    def verify_restoration(cls, encoded: bytes, owner_identity: str, schema_version: str) -> bool:
+        """Verify a restored checkpoint through the owner checkpoint codec."""
+        return cls.validate_checkpoint(encoded, owner_identity, schema_version)
+
 
 __all__ = ["EmbodimentCheckpoint"]
