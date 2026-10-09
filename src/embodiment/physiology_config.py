@@ -22,10 +22,6 @@ class PhysiologyConfig:
     ratio_unrecoverable: float = 0.0
     ratio_severe: float = 0.2
     ratio_elevated: float = 0.5
-    # Historical Physics3D default: 10 substeps at 1/240 s = 1/24 s.
-    # M2 interprets legacy per-tick somatic rates relative to this reference
-    # interval so the canonical pre-M2 default trajectory is preserved exactly.
-    somatic_reference_duration_s: float = 1.0 / 24.0
     max_repair_per_tick: float = 0.25
     autonomous_repair_rate: float = 0.02
     fatigue_work_gain: float = 0.50
@@ -59,7 +55,6 @@ class PhysiologyConfig:
             "ratio_unrecoverable",
             "ratio_severe",
             "ratio_elevated",
-            "somatic_reference_duration_s",
             "max_repair_per_tick",
             "autonomous_repair_rate",
             "fatigue_work_gain",
@@ -96,7 +91,6 @@ class PhysiologyConfig:
             "ratio_unrecoverable",
             "ratio_severe",
             "ratio_elevated",
-            "somatic_reference_duration_s",
             "max_repair_per_tick",
             "autonomous_repair_rate",
             "fatigue_work_gain",
@@ -131,9 +125,6 @@ class PhysiologyConfig:
                 f"ratios must satisfy ratio_unrecoverable <= ratio_severe <= ratio_elevated; "
                 f"got {self.ratio_unrecoverable} <= {self.ratio_severe} <= {self.ratio_elevated}"
             )
-
-        if self.somatic_reference_duration_s <= 0.0:
-            raise ValueError("somatic_reference_duration_s must be positive")
 
         # Repair rate
         if self.max_repair_per_tick <= 0.0:
