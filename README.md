@@ -9,6 +9,10 @@ metabolic accounting modules. It intentionally does not include the mixed
 `Body` actuator/receptor aggregate, Organism-longitudinal embodiment learning,
 or Lab/Physics3D runtime composition.
 
+The follow-up mechanics slice contains immutable Physics3D value contracts and
+physical parameter constants only. It does not include a solver or claim that
+the Physics3D runtime is owned by Embodiment as a whole.
+
 ## Development
 
 ```sh
