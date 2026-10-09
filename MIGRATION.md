@@ -11,9 +11,9 @@
 
 | Source path | Disposition | Target path | Notes |
 | --- | --- | --- | --- |
-| `physiology.py` | SPLIT | `src/embodiment/physiology.py` | Somatic body state candidate; retained current behavior. |
-| `metabolism.py` | SPLIT | `src/embodiment/metabolism.py` | Carries current per-kind accounting coupled to body state; ownership of non-somatic accounting remains subject to boundary review. |
-| `physiology_config.py` | SPLIT | `src/embodiment/physiology_config.py` | Contains somatic and non-somatic settings in one current config; copied unchanged pending split. |
+| `symbiont/src/symbiont/core/embodiment/physiology.py` | SPLIT | `src/embodiment/physiology.py` | Somatic body state candidate; copied unchanged. Last source-path commit at baseline: `538fa01dcaf4d80e63983f948aee4028fc5c2bef`. |
+| `symbiont/src/symbiont/core/embodiment/metabolism.py` | SPLIT | `src/embodiment/metabolism.py` | Carries current per-kind accounting coupled to body state; ownership of non-somatic accounting remains subject to boundary review. Last source-path commit at baseline: `13720935595fedabec2c376dc933629b0deae5aa`. |
+| `symbiont/src/symbiont/core/embodiment/physiology_config.py` | SPLIT | `src/embodiment/physiology_config.py` | Contains somatic and non-somatic settings in one current config; copied unchanged pending split. Last source-path commit at baseline: `ca10871706a02def5afe62d059b04046dee4876c`. |
 | source unit tests | REWRITE | `tests/` | Focused contract checks authored for the extracted slice; no source files changed. |
 
 No source history is asserted for this reconstructed multi-file slice. Provenance
@@ -33,6 +33,7 @@ is the pinned source SHA and paths above. The source monorepo remains intact.
 - No copied source module has been edited in this initial slice.
 - Python distribution/import name is `embodiment`; no `biopeia_*` prefix is used.
 - This package is an extraction candidate only; no CURRENT/TARGET compliance is implied.
+- The copied `LivingBodyState` uses the CURRENT enum label `VitalState.DEAD`; this extraction does not reinterpret it as TARGET `ORGANISM_DEATH`. Applicability is bounded to body-state code and requires later contract mapping.
 
 ## Validation
 
