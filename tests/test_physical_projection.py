@@ -8,6 +8,7 @@ from embodiment.observation import BodyPoseSample
 from embodiment.physics3d.articulated_spec import ArticulatedBodySpec
 from embodiment.physics3d.mechanics import JointSpec, JointTopology, SegmentSpec
 from embodiment.physics3d.physical_projection import project_body_physical_input
+from embodiment.physics3d.physical_transition import PhysicalStepCorrelation
 
 
 def _spec() -> ArticulatedBodySpec:
@@ -40,10 +41,24 @@ def _pose() -> BodyPoseSample:
     )
 
 
+def _correlation() -> PhysicalStepCorrelation:
+    return PhysicalStepCorrelation(
+        world_id="world.1",
+        causal_tick=2,
+        physical_step_id="step.3",
+        body_id="body.7",
+        embodiment_episode_id="episode.2",
+        morphology_revision="morph.4",
+        environment_revision="environment.5",
+        solver_config_revision="solver.6",
+    )
+
+
 def test_projection_snapshots_pose_morphology_and_contact_links() -> None:
-    projected = project_body_physical_input(_spec(), _pose())
+    projected = project_body_physical_input(_spec(), _pose(), correlation=_correlation())
 
     assert projected.body_id == "body.7"
+    assert projected.correlation == _correlation()
     assert projected.body_kind == "test-body"
     assert projected.reference_frame == "physics3d.world"
     assert projected.body_frame == "body.root"
@@ -59,7 +74,7 @@ def test_projection_is_immutable_and_does_not_mutate_owner_inputs() -> None:
     spec = _spec()
     pose = _pose()
     spec_before = dict(spec.segments)
-    projected = project_body_physical_input(spec, pose)
+    projected = project_body_physical_input(spec, pose, correlation=_correlation())
 
     with pytest.raises(FrozenInstanceError):
         projected.body_id = "body.other"  # type: ignore[misc]
@@ -70,7 +85,7 @@ def test_projection_is_immutable_and_does_not_mutate_owner_inputs() -> None:
 
 def test_projection_captures_description_instead_of_live_mutable_spec_mapping() -> None:
     spec = _spec()
-    projected = project_body_physical_input(spec, _pose())
+    projected = project_body_physical_input(spec, _pose(), correlation=_correlation())
     original = projected.articulated_description
 
     spec.segments.clear()
