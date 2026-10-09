@@ -195,10 +195,23 @@ sparse and immutable; it is not a solver result or somatic state transition.
 
 Remaining work is explicit: command producers and active-morphology/surface
 owners must supply these fields; this repository does not define which
-physical quantities/units a concrete simulator adapter uses. No solver-result
-candidate, owner validation/adoption transition, or World commit flow is
-implemented here. A future solver result must remain a candidate until
-Embodiment validates and adopts it, and World commit is required before it is
-treated as causally committed state. This slice neither runs a solver, mutates
-body truth, nor claims physical efficacy. It imports no Organism implementation
-at runtime; the source monorepo remains unchanged.
+physical quantities/units a concrete simulator adapter uses. This slice
+neither runs a solver nor claims physical efficacy. It imports no Organism
+implementation at runtime; the source monorepo remains unchanged.
+
+## Additional slice: owner-side physical result adoption and checkpoint value (candidate)
+
+| Source element | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| Correlated solver body candidate and Embodiment adoption boundary | NEW STRUCTURAL CONTRACT | `src/embodiment/physics3d/physical_transition.py` | Candidate correlation includes World, causal tick, physical-step ID, body, embodiment episode, morphology revision, environment revision, and solver configuration revision. The solver remains a numerical executor; this module validates and adopts through an immutable owner-state transition. |
+| Embodiment physical-state checkpoint representation | NEW STRUCTURAL CONTRACT | `EmbodimentPhysicalState.checkpoint_bytes()` / `restore_checkpoint()` | Deterministic JSON bytes encode owner identity, episode, morphology revision, world tick, pose, frames, metres, xyzw ordering, contract revision, and last accepted step correlation. SHA-256 is a stable content identifier only. |
+| Focused acceptance and checkpoint tests | NEW TESTS | `tests/test_physical_transition.py` | Exercises valid adoption, stale/wrong correlation rejection without mutation, deterministic bytes, exact restore, explicit units/frames, and malformed/unsupported checkpoint rejection. |
+
+The checkpoint bytes represent a recoverable owner value, but Embodiment does
+not persist them or claim filesystem durability. `durably_referenceable` stays
+false for the in-memory state; a digest becomes a usable World checkpoint
+reference only after an external checkpoint store durably stores and verifies
+the bytes. World must still coordinate all required owner references before
+committing its causal cut. This bounded slice does not select/invoke a solver,
+integrate Environment, persist checkpoints, coordinate World, or complete the
+FIRST BIOPEIA END-TO-END PHYSICAL CAUSAL STEP milestone.

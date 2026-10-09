@@ -1,4 +1,5 @@
 from dataclasses import replace
+import json
 
 import pytest
 
@@ -105,3 +106,37 @@ def test_adopted_state_explicitly_has_no_durable_checkpoint_reference() -> None:
     assert state.state_owner == "EMBODIMENT_OWNED"
     assert state.durable_reference is None
     assert state.durably_referenceable is False
+
+
+def test_checkpoint_bytes_are_deterministic_and_restore_exact_adopted_state() -> None:
+    initial = _state()
+    step = _correlation()
+    adopted = initial.adopt_candidate(_candidate(step), expected_step=step)
+
+    encoded = adopted.checkpoint_bytes()
+    restored = EmbodimentPhysicalState.restore_checkpoint(encoded)
+
+    assert encoded == adopted.checkpoint_bytes()
+    assert restored == adopted
+    assert restored.last_physical_step == step
+    assert restored.pose.position_m == adopted.pose.position_m
+    assert restored.pose.orientation_xyzw == adopted.pose.orientation_xyzw
+    assert restored.pose.reference_frame == "physics3d.world"
+    assert restored.pose.body_frame == "body.root"
+    assert json.loads(encoded)["pose"]["position_unit"] == "m"
+    assert json.loads(encoded)["pose"]["orientation_order"] == "xyzw"
+    assert restored.checkpoint_digest == adopted.checkpoint_digest
+    # Encoding/decoding alone does not imply that a store durably persisted it.
+    assert restored.durably_referenceable is False
+
+
+def test_checkpoint_restore_rejects_unsupported_units_and_malformed_bytes() -> None:
+    state = _state()
+    payload = json.loads(state.checkpoint_bytes())
+    payload["pose"]["position_unit"] = "cm"
+    with pytest.raises(ValueError, match="units"):
+        EmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
+    with pytest.raises(ValueError, match="JSON"):
+        EmbodimentPhysicalState.restore_checkpoint(b"not-json")
