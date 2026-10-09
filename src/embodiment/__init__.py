@@ -10,6 +10,7 @@ from .physiology import (
     VitalState,
 )
 from .physiology_config import DEFAULT_PHYSIOLOGY_CONFIG, PhysiologyConfig
+from .somatic_cycle import SomaticCycle
 
 __all__ = [
     "BodyStructureState",
@@ -22,5 +23,6 @@ __all__ = [
     "PhysiologyController",
     "PhysiologySnapshot",
     "ResourcePressure",
+    "SomaticCycle",
     "VitalState",
 ]
