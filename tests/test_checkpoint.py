@@ -32,6 +32,22 @@ def test_checkpoint_rejects_malformed_or_unsupported_payload(payload: bytes):
         EmbodimentCheckpoint.from_bytes(payload)
 
 
+def test_checkpoint_rejects_unknown_envelope_fields():
+    payload = json.loads(_checkpoint().to_bytes())
+    payload["unrecognized"] = "must not be ignored"
+
+    with pytest.raises(ValueError, match="checkpoint fields"):
+        EmbodimentCheckpoint.from_bytes(json.dumps(payload).encode())
+
+
+def test_checkpoint_rejects_boolean_schema_version():
+    payload = json.loads(_checkpoint().to_bytes())
+    payload["schema_version"] = True
+
+    with pytest.raises(ValueError, match="schema"):
+        EmbodimentCheckpoint.from_bytes(json.dumps(payload).encode())
+
+
 def test_checkpoint_rejects_ledger_body_energy_mismatch():
     payload = json.loads(_checkpoint().to_bytes())
     payload["metabolic_ledger"]["physical_energy_reserve"] += 0.5

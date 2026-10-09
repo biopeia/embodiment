@@ -59,7 +59,17 @@ class EmbodimentCheckpoint:
             payload: Any = json.loads(encoded)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("invalid embodiment checkpoint JSON") from exc
-        if not isinstance(payload, dict) or payload.get("schema_version") != cls.SCHEMA_VERSION:
+        expected_keys = {
+            "schema_version",
+            "body_id",
+            "episode_id",
+            "body_state",
+            "metabolic_ledger",
+        }
+        if not isinstance(payload, dict) or set(payload) != expected_keys:
+            raise ValueError("invalid embodiment checkpoint fields")
+        schema_version = payload["schema_version"]
+        if type(schema_version) is not int or schema_version != cls.SCHEMA_VERSION:
             raise ValueError("unsupported embodiment checkpoint schema")
         body_id = payload.get("body_id")
         episode_id = payload.get("episode_id")
