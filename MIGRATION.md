@@ -153,3 +153,20 @@ The solver must return results separately; this projection performs no
 Embodiment state transition, World coordination, causal commit, or acceptance
 of solver output. No solver-runtime wiring or physical validity claim is made.
 The historical monorepo remains unchanged.
+
+## Additional slice: physical duration value
+
+| Source element | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| `symbiont/src/symbiont/core/embodiment/duration.py` — `PhysicalDuration` only | MOVE (copy-first) | `src/embodiment/duration.py` | Source repository SHA `80d372a186513035f85a769db886e505cabba52d`; source-path commit `74bd7a0099341410465fe9e540f93e6ef7266bc2`; pinned source blob `965fd3bb62f08c2c582e5b785233955d796297ee` (SHA-256 `cd4e7ed5fad889a2d20615563bdba2e0d0644295f7e937129b31a2d106676819`). The copied implementation retains the exact constructor and representation behavior. |
+| Focused `PhysicalDuration` checks | REWRITE | `tests/test_duration.py` | Tests cover plain integer/float and same-type inputs, nonnegative finite values, rejection of booleans/other numeric subclasses/non-numeric values, and representation. |
+
+The type represents a supplied physical elapsed duration in seconds (`T_p`);
+it does not measure or source time. No clock, scheduler, timestep policy,
+solver integration, consumer, or causal authority was copied or added. Host
+wall-clock time and cognition/cycle scales remain outside this type. The
+canonical temporal-scale design at the pinned source SHA keeps `T_p` owned by
+Embodiment and prohibits Cognition and Foundation from importing or consuming
+it (`docs/design/core/temporal-scales-and-clock-separation-v1.md`, lines
+90–94 and 194–197). This candidate does not establish target-wide compliance
+or runtime conformance. The source monorepo remains unchanged.
