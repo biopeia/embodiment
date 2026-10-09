@@ -14,6 +14,7 @@ from embodiment.physics3d.articulated_spec import (
     ArticulatedBodySpec,
     build_articulated_urdf,
 )
+from embodiment.physics3d.physical_transition import PhysicalStepCorrelation
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +28,7 @@ class BodyPhysicalInput:
     """
 
     body_id: str
+    correlation: PhysicalStepCorrelation
     body_kind: str
     reference_frame: str
     body_frame: str
@@ -39,6 +41,8 @@ class BodyPhysicalInput:
 def project_body_physical_input(
     spec: ArticulatedBodySpec,
     pose: BodyPoseSample,
+    *,
+    correlation: PhysicalStepCorrelation,
 ) -> BodyPhysicalInput:
     """Snapshot concrete morphology and a validated pose for a substrate.
 
@@ -47,8 +51,11 @@ def project_body_physical_input(
     those values to solver mass, geometry, force or constraint parameters.
     """
 
+    if correlation.body_id != pose.body_id:
+        raise ValueError("physical-step body identity does not match projected pose")
     return BodyPhysicalInput(
         body_id=pose.body_id,
+        correlation=correlation,
         body_kind=spec.body_kind,
         reference_frame=pose.reference_frame,
         body_frame=pose.body_frame,
