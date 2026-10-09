@@ -46,8 +46,10 @@ class SolverBodyCandidate:
     """Untrusted numerical result proposed for owner adoption.
 
     Position is metres and orientation is xyzw in the declared reference/body
-    frames. The solver is responsible only for producing these numerical
-    values; this type does not grant them authority.
+    frames. Root linear velocity is metres/second and root angular velocity is
+    radians/second; both vectors are expressed in ``reference_frame``. The
+    solver is responsible only for producing these numerical values; this
+    type does not grant them authority.
     """
 
     correlation: PhysicalStepCorrelation
@@ -55,11 +57,17 @@ class SolverBodyCandidate:
     body_frame: str
     position_m: tuple[float, float, float]
     orientation_xyzw: tuple[float, float, float, float]
+    linear_velocity_m_per_s: tuple[float, float, float]
+    angular_velocity_rad_per_s: tuple[float, float, float]
+
+    def __post_init__(self) -> None:
+        _validate_vector(self.linear_velocity_m_per_s, "linear_velocity_m_per_s")
+        _validate_vector(self.angular_velocity_rad_per_s, "angular_velocity_rad_per_s")
 
 
 @dataclass(frozen=True, slots=True)
 class EmbodimentPhysicalState:
-    """Current owner-held body pose at a World causal tick.
+    """Current owner-held free-root rigid-body state at a World causal tick.
 
     This is explicitly ``EMBODIMENT_OWNED``. Its checkpoint encoding is a
     recoverable value but it has no durable checkpoint reference until an
@@ -72,6 +80,8 @@ class EmbodimentPhysicalState:
     embodiment_episode_id: str
     morphology_revision: str
     pose: BodyPoseSample
+    linear_velocity_m_per_s: tuple[float, float, float]
+    angular_velocity_rad_per_s: tuple[float, float, float]
     last_physical_step: PhysicalStepCorrelation | None = None
     state_owner: str = "EMBODIMENT_OWNED"
     durable_reference: str | None = None
@@ -90,6 +100,8 @@ class EmbodimentPhysicalState:
             raise ValueError("causal_tick must be a non-negative integer")
         if self.pose.body_id != self.body_id:
             raise ValueError("pose body identity differs from owner state")
+        _validate_vector(self.linear_velocity_m_per_s, "linear_velocity_m_per_s")
+        _validate_vector(self.angular_velocity_rad_per_s, "angular_velocity_rad_per_s")
         sample_value = self.pose.sample_value
         if isinstance(sample_value, bool) or not isinstance(sample_value, (int, float, str)):
             raise ValueError("pose sample_value must be a string or number")
@@ -126,13 +138,18 @@ class EmbodimentPhysicalState:
 
         pose = self.pose
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "state_owner": self.state_owner,
             "world_id": self.world_id,
             "causal_tick": self.causal_tick,
             "body_id": self.body_id,
             "embodiment_episode_id": self.embodiment_episode_id,
             "morphology_revision": self.morphology_revision,
+            "linear_velocity_m_per_s": list(self.linear_velocity_m_per_s),
+            "angular_velocity_rad_per_s": list(self.angular_velocity_rad_per_s),
+            "linear_velocity_unit": "m/s",
+            "angular_velocity_unit": "rad/s",
+            "velocity_frame": pose.reference_frame,
             "last_physical_step": (
                 None if self.last_physical_step is None else {
                     "world_id": self.last_physical_step.world_id,
@@ -181,12 +198,25 @@ class EmbodimentPhysicalState:
         expected_keys = {
             "schema_version", "state_owner", "world_id", "causal_tick", "body_id",
             "embodiment_episode_id", "morphology_revision", "last_physical_step", "pose",
+            "linear_velocity_m_per_s", "angular_velocity_rad_per_s",
+            "linear_velocity_unit", "angular_velocity_unit", "velocity_frame",
         }
         if not isinstance(payload, dict) or set(payload) != expected_keys:
             raise ValueError("invalid Embodiment physical checkpoint fields")
-        if payload["schema_version"] != 1:
+        if payload["schema_version"] != 2:
             raise ValueError("unsupported Embodiment physical checkpoint schema")
         pose_payload = payload["pose"]
+        if not isinstance(pose_payload, dict):
+            raise ValueError("invalid Embodiment physical checkpoint pose")
+        if (
+            payload["linear_velocity_unit"] != "m/s"
+            or payload["angular_velocity_unit"] != "rad/s"
+            or payload["velocity_frame"] != pose_payload.get("reference_frame")
+        ):
+            raise ValueError("unsupported physical velocity units or frame")
+        for name in ("linear_velocity_m_per_s", "angular_velocity_rad_per_s"):
+            if not isinstance(payload[name], list):
+                raise ValueError(f"checkpoint {name} must be an array")
         step_payload = payload["last_physical_step"]
         if step_payload is not None:
             step_keys = {
@@ -230,6 +260,8 @@ class EmbodimentPhysicalState:
                 embodiment_episode_id=payload["embodiment_episode_id"],
                 morphology_revision=payload["morphology_revision"],
                 pose=pose,
+                linear_velocity_m_per_s=tuple(payload["linear_velocity_m_per_s"]),
+                angular_velocity_rad_per_s=tuple(payload["angular_velocity_rad_per_s"]),
                 last_physical_step=(
                     None if step_payload is None else PhysicalStepCorrelation(**step_payload)
                 ),
@@ -286,8 +318,19 @@ class EmbodimentPhysicalState:
             embodiment_episode_id=self.embodiment_episode_id,
             morphology_revision=self.morphology_revision,
             pose=pose,
+            linear_velocity_m_per_s=candidate.linear_velocity_m_per_s,
+            angular_velocity_rad_per_s=candidate.angular_velocity_rad_per_s,
             last_physical_step=expected_step,
         )
+
+
+def _validate_vector(value: object, name: str) -> None:
+    if not isinstance(value, tuple) or len(value) != 3:
+        raise ValueError(f"{name} must be a 3-vector in its declared frame")
+    if any(isinstance(component, bool) or not isinstance(component, (int, float)) for component in value):
+        raise ValueError(f"{name} components must be numeric")
+    if any(not math.isfinite(float(component)) for component in value):
+        raise ValueError(f"{name} components must be finite")
 
 
 __all__ = ["EmbodimentPhysicalState", "PhysicalStepCorrelation", "SolverBodyCandidate"]

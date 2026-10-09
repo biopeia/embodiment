@@ -55,7 +55,11 @@ def _correlation() -> PhysicalStepCorrelation:
 
 
 def test_projection_snapshots_pose_morphology_and_contact_links() -> None:
-    projected = project_body_physical_input(_spec(), _pose(), correlation=_correlation())
+    projected = project_body_physical_input(
+        _spec(), _pose(), correlation=_correlation(),
+        linear_velocity_m_per_s=(1.0, 0.0, 0.0),
+        angular_velocity_rad_per_s=(0.0, 0.0, 0.5),
+    )
 
     assert projected.body_id == "body.7"
     assert projected.correlation == _correlation()
@@ -64,6 +68,8 @@ def test_projection_snapshots_pose_morphology_and_contact_links() -> None:
     assert projected.body_frame == "body.root"
     assert projected.position_m == (1.0, 2.0, 3.0)
     assert projected.orientation_xyzw == (0.0, 0.0, 0.0, 1.0)
+    assert projected.linear_velocity_m_per_s == (1.0, 0.0, 0.0)
+    assert projected.angular_velocity_rad_per_s == (0.0, 0.0, 0.5)
     assert projected.contact_link_names == ("foot",)
     assert '<mass value="1"/>' in projected.articulated_description
     assert '<mass value="0.5"/>' in projected.articulated_description
@@ -74,7 +80,11 @@ def test_projection_is_immutable_and_does_not_mutate_owner_inputs() -> None:
     spec = _spec()
     pose = _pose()
     spec_before = dict(spec.segments)
-    projected = project_body_physical_input(spec, pose, correlation=_correlation())
+    projected = project_body_physical_input(
+        spec, pose, correlation=_correlation(),
+        linear_velocity_m_per_s=(0.0, 0.0, 0.0),
+        angular_velocity_rad_per_s=(0.0, 0.0, 0.0),
+    )
 
     with pytest.raises(FrozenInstanceError):
         projected.body_id = "body.other"  # type: ignore[misc]
@@ -85,9 +95,22 @@ def test_projection_is_immutable_and_does_not_mutate_owner_inputs() -> None:
 
 def test_projection_captures_description_instead_of_live_mutable_spec_mapping() -> None:
     spec = _spec()
-    projected = project_body_physical_input(spec, _pose(), correlation=_correlation())
+    projected = project_body_physical_input(
+        spec, _pose(), correlation=_correlation(),
+        linear_velocity_m_per_s=(0.0, 0.0, 0.0),
+        angular_velocity_rad_per_s=(0.0, 0.0, 0.0),
+    )
     original = projected.articulated_description
 
     spec.segments.clear()
 
     assert projected.articulated_description == original
+
+
+def test_projection_rejects_nonfinite_root_velocity() -> None:
+    with pytest.raises(ValueError, match="finite numbers"):
+        project_body_physical_input(
+            _spec(), _pose(), correlation=_correlation(),
+            linear_velocity_m_per_s=(0.0, float("inf"), 0.0),
+            angular_velocity_rad_per_s=(0.0, 0.0, 0.0),
+        )

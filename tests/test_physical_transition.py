@@ -42,6 +42,8 @@ def _state() -> EmbodimentPhysicalState:
             sample_kind="initial",
             sample_value=4,
         ),
+        linear_velocity_m_per_s=(0.0, 0.0, 0.0),
+        angular_velocity_rad_per_s=(0.0, 0.0, 0.0),
     )
 
 
@@ -52,6 +54,8 @@ def _candidate(correlation: PhysicalStepCorrelation) -> SolverBodyCandidate:
         body_frame="body.root",
         position_m=(0.0, 0.0, 0.9),
         orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+        linear_velocity_m_per_s=(0.0, 0.0, -1.0),
+        angular_velocity_rad_per_s=(0.0, 0.0, 0.0),
     )
 
 
@@ -64,6 +68,7 @@ def test_adoption_requires_exact_authorized_step_and_returns_new_owner_state() -
     assert adopted.state_owner == "EMBODIMENT_OWNED"
     assert adopted.causal_tick == 5
     assert adopted.pose.position_m == (0.0, 0.0, 0.9)
+    assert adopted.linear_velocity_m_per_s == (0.0, 0.0, -1.0)
     assert state.causal_tick == 4
     assert state.pose.position_m == (0.0, 0.0, 1.0)
 
@@ -125,6 +130,11 @@ def test_checkpoint_bytes_are_deterministic_and_restore_exact_adopted_state() ->
     assert restored.pose.body_frame == "body.root"
     assert json.loads(encoded)["pose"]["position_unit"] == "m"
     assert json.loads(encoded)["pose"]["orientation_order"] == "xyzw"
+    assert json.loads(encoded)["linear_velocity_unit"] == "m/s"
+    assert json.loads(encoded)["angular_velocity_unit"] == "rad/s"
+    assert json.loads(encoded)["velocity_frame"] == "physics3d.world"
+    assert restored.linear_velocity_m_per_s == adopted.linear_velocity_m_per_s
+    assert restored.angular_velocity_rad_per_s == adopted.angular_velocity_rad_per_s
     assert restored.checkpoint_digest == adopted.checkpoint_digest
     # Encoding/decoding alone does not imply that a store durably persisted it.
     assert restored.durably_referenceable is False
@@ -133,13 +143,33 @@ def test_checkpoint_bytes_are_deterministic_and_restore_exact_adopted_state() ->
 def test_checkpoint_restore_rejects_unsupported_units_and_malformed_bytes() -> None:
     state = _state()
     payload = json.loads(state.checkpoint_bytes())
+    payload["schema_version"] = 1
+    with pytest.raises(ValueError, match="unsupported Embodiment physical checkpoint schema"):
+        EmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
+
+    payload = json.loads(state.checkpoint_bytes())
     payload["pose"]["position_unit"] = "cm"
     with pytest.raises(ValueError, match="units"):
         EmbodimentPhysicalState.restore_checkpoint(
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         )
+    payload = json.loads(state.checkpoint_bytes())
+    payload["angular_velocity_unit"] = "deg/s"
+    with pytest.raises(ValueError, match="velocity units or frame"):
+        EmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
     with pytest.raises(ValueError, match="JSON"):
         EmbodimentPhysicalState.restore_checkpoint(b"not-json")
+
+
+@pytest.mark.parametrize("field", ["linear_velocity_m_per_s", "angular_velocity_rad_per_s"])
+@pytest.mark.parametrize("value", [(0.0, float("nan"), 0.0), (0.0, 1.0), (0.0, True, 0.0)])
+def test_owner_state_rejects_invalid_root_velocity_vectors(field: str, value: tuple[object, ...]) -> None:
+    with pytest.raises(ValueError):
+        replace(_state(), **{field: value})
 
 
 def test_owner_state_rejects_last_step_with_mismatched_identity_or_revision() -> None:
