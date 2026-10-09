@@ -10,6 +10,7 @@ from .physiology import (
     VitalState,
 )
 from .physiology_config import DEFAULT_PHYSIOLOGY_CONFIG, PhysiologyConfig
+from .intake import MaterialTransfer, absorb_material_transfer
 from .somatic_cycle import SomaticCycle
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "EmbodimentCheckpoint",
     "DEFAULT_PHYSIOLOGY_CONFIG",
     "LivingBodyState",
+    "MaterialTransfer",
     "MetabolicLedger",
     "MetabolicSnapshot",
     "PhysiologyConfig",
@@ -25,4 +27,5 @@ __all__ = [
     "ResourcePressure",
     "SomaticCycle",
     "VitalState",
+    "absorb_material_transfer",
 ]
