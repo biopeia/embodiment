@@ -119,3 +119,18 @@ the original mixed runtime satisfies TARGET contracts. `Body.apply_damage()`
 was not copied because its current behavior delegates to the already extracted
 `LivingBodyState.apply_wear()` path and adds no distinct somatic transition.
 The source monorepo remains unchanged.
+
+## Additional slice: body-side material transfer acceptance
+
+| Source element | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| `symbiont/src/symbiont/core/embodiment/body.py` — `MaterialTransfer` and `Body.absorb_material()` only | SPLIT / REWRITE | `src/embodiment/intake.py` | Source repository SHA `80d372a186513035f85a769db886e505cabba52d`; source-path commit `13720935595fedabec2c376dc933629b0deae5aa`; pinned source blob `84d57d7a820070699314f3e21d0349da18751398` (SHA-256 `cbbdfd7e1d1e49f61266c0eaa1af05be1b9b00e1fb6971bdf2dc93599f2624ad`). The standalone target operation preserves the source rule: mismatched target body ID accepts `0`; a match delegates the scalar amount to `LivingBodyState.add_energy()`, which rejects dead-body intake and caps acceptance at available capacity. |
+| Focused transfer acceptance checks | REWRITE | `tests/test_intake.py` | Directly checks target identity, capacity-limited acceptance, dead-body rejection, zero amount, and transfer validation. The source integration oracle is `lab/tests/unit/lab/world/test_adapter.py::test_clean_material_exchange_conserves_mass_with_scarce_resources` at source lines 362–443; its path last changed at the pinned source SHA in `06f33acca0b01fc772fbcf7b8f1cede295609630`. The tracked caller is `lab/src/lab/world/population.py:739–769`, whose path last changed at that SHA in `0550aede453d213674bfeb916cd6e3975f26aa91`. |
+
+The operation consumes only the existing Embodiment body-state API and imports
+no World, Environment, Lab, or Organism code. `source_id` and `composition`
+remain uninterpreted, as in CURRENT. The scalar amount is passed unchanged to
+`add_energy()`; no material-to-energy conversion or scientific equivalence is
+asserted. Resource withdrawal, transfer authorization, event publication,
+refunds, and transaction ordering remain World/Environment responsibilities and
+were not extracted. The source monorepo remains unchanged.
