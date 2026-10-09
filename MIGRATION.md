@@ -35,6 +35,18 @@ is the pinned source SHA and paths above. The source monorepo remains intact.
 | `embodiment/src/embodiment/physics3d/mechanics.py` | MOVE (copy-first) | `src/embodiment/physics3d/mechanics.py` | Source repository SHA `80d372a186513035f85a769db886e505cabba52d`; source-path commit `ce5a057295f75bd309af7be3aa60e5d5c49d2b4c`. Exact file content match verified. Self-contained immutable mechanics value types/constants; no solver, World coordination, or Organism interpretation. |
 | focused mechanics contract tests | REWRITE | `tests/test_physics3d_mechanics.py` | Target-side checks for immutable mechanics specifications and constants. |
 
+## Additional slice: body/episode checkpoint composition
+
+| Source/target element | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| Existing `LivingBodyState` and `MetabolicLedger` checkpoint contracts | REWRITE / COMPOSE | `src/embodiment/checkpoint.py` | Composes the extracted owner checkpoints with explicit body and embodiment-episode IDs. It does not claim Organism identity or World commit authority. |
+| Focused serialization and consistency tests | REWRITE | `tests/test_checkpoint.py` | Verifies deterministic encoding, identity retention, malformed schema rejection and body/ledger energy agreement. |
+
+This schema is a migration-stage Embodiment owner checkpoint. It is not a
+complete portable Organism continuation or a World causal manifest. It has no
+atomic cross-authority publication, crash recovery, storage durability, or
+scientific efficacy guarantee. The source monorepo remains unchanged.
+
 ## Known rewrites
 
 - `physiology_config.py` excludes unused `prospective_*` parameters for Organism deliberation; no other physiology semantics were changed.

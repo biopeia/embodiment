@@ -1,5 +1,6 @@
 """Physical/somatic state extraction candidate for Biopeia Embodiment."""
 
+from .checkpoint import EmbodimentCheckpoint
 from .metabolism import MetabolicLedger, MetabolicSnapshot, ResourcePressure
 from .physiology import (
     BodyStructureState,
@@ -12,6 +13,7 @@ from .physiology_config import DEFAULT_PHYSIOLOGY_CONFIG, PhysiologyConfig
 
 __all__ = [
     "BodyStructureState",
+    "EmbodimentCheckpoint",
     "DEFAULT_PHYSIOLOGY_CONFIG",
     "LivingBodyState",
     "MetabolicLedger",
