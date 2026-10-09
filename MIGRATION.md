@@ -72,3 +72,18 @@ frame label is retained as source contract metadata and is not a World identity.
 
 Build/install/test results are recorded in the migration PR/check run. No
 scientific assets or historical checkpoints were copied.
+
+## Additional slice: engine-neutral articulated body descriptions
+
+| Source path | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| `embodiment/src/embodiment/physics3d/articulated.py` — `FixedLinkTopology`, `ArticulatedBodySpec`, pure URDF formatting helpers, and `build_articulated_urdf` only | SPLIT | `src/embodiment/physics3d/articulated_spec.py` | Source repository SHA `80d372a186513035f85a769db886e505cabba52d`; source-path commit `cea69ac01681811cce0ed23d87c514b9eb048fdb`; source blob SHA-256 `8b47c2caecdf9d31908a008ab4b3af31a2bd8b8272852d8f64fc97bf5d0bfb73`. The target module depends only on the existing mechanics value types and Python standard library. |
+| focused body-description checks | REWRITE | `tests/test_articulated_spec.py` | Tests deterministic URDF generation, opaque ordinal channel declarations and invalid topology rejection without loading a solver. |
+
+The solver-bound `ArticulatedPhysics` implementation, MuJoCo scene interactions,
+contact resolution, actuation, runtime state, and engine checkpoint handling were
+not copied. The generated URDF root label changed from the historical
+`symbiont_` prefix to `body_`; link/joint geometry and limits are retained by
+the extracted builder. Link emission order is now stable. This is a bounded
+description/generation slice, not an executable body, an integration-step
+authority, a physics substrate, or evidence of organism motor control.
