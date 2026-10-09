@@ -134,3 +134,22 @@ remain uninterpreted, as in CURRENT. The scalar amount is passed unchanged to
 asserted. Resource withdrawal, transfer authorization, event publication,
 refunds, and transaction ordering remain World/Environment responsibilities and
 were not extracted. The source monorepo remains unchanged.
+
+## Additional slice: engine-neutral physical input projection
+
+| Source elements | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| `embodiment/src/embodiment/physics3d/articulated.py` — `ArticulatedBodySpec` and `build_articulated_urdf`; `embodiment/src/embodiment/observation.py` — `BodyPoseSample` | SPLIT / REWRITE composition | `src/embodiment/physics3d/physical_projection.py` | Source repository SHA `80d372a186513035f85a769db886e505cabba52d`; articulated-description source path commit `cea69ac01681811cce0ed23d87c514b9eb048fdb`; pose source path commit `be3236ce13c3aff22353726b5b7aa00ff3e7eac7`. The target combines the already extracted owner-side morphology description (segment mass/box geometry, joints and declared contact-link names) with the already extracted validated root pose into an immutable solver input snapshot. |
+| Focused projection checks | REWRITE | `tests/test_physical_projection.py` | Tests pose/frame and geometry/mass preservation, immutability, no mutation of source owner values, and snapshot behavior if the input spec's mapping is later mutated. |
+
+This is the bounded projection contract from the available concrete fields; it
+does **not** project `LivingBodyState` energy, integrity, temperature, fatigue,
+damage, viability or age into solver parameters. CURRENT defines no grounded
+mapping from those physiological scalars to mass, contact geometry, force or
+constraints, and inventing one would violate owner semantics. The pose is an
+explicit `BodyPoseSample`, not a pose inferred from physiology. URDF here is a
+solver-consumable morphology description, not solver ownership or execution.
+The solver must return results separately; this projection performs no
+Embodiment state transition, World coordination, causal commit, or acceptance
+of solver output. No solver-runtime wiring or physical validity claim is made.
+The historical monorepo remains unchanged.
