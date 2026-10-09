@@ -143,6 +143,13 @@ def test_checkpoint_bytes_are_deterministic_and_restore_exact_adopted_state() ->
 def test_checkpoint_restore_rejects_unsupported_units_and_malformed_bytes() -> None:
     state = _state()
     payload = json.loads(state.checkpoint_bytes())
+    payload["schema_version"] = 1
+    with pytest.raises(ValueError, match="unsupported Embodiment physical checkpoint schema"):
+        EmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
+
+    payload = json.loads(state.checkpoint_bytes())
     payload["pose"]["position_unit"] = "cm"
     with pytest.raises(ValueError, match="units"):
         EmbodimentPhysicalState.restore_checkpoint(
