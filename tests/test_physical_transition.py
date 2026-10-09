@@ -140,3 +140,37 @@ def test_checkpoint_restore_rejects_unsupported_units_and_malformed_bytes() -> N
         )
     with pytest.raises(ValueError, match="JSON"):
         EmbodimentPhysicalState.restore_checkpoint(b"not-json")
+
+
+def test_owner_state_rejects_last_step_with_mismatched_identity_or_revision() -> None:
+    state = _state()
+    step = _correlation()
+    adopted = state.adopt_candidate(_candidate(step), expected_step=step)
+
+    with pytest.raises(ValueError, match="identity/revision"):
+        replace(adopted, last_physical_step=replace(step, morphology_revision="morph.stale"))
+    with pytest.raises(ValueError, match="identity/revision"):
+        replace(adopted, last_physical_step=replace(step, body_id="body.other"))
+
+
+def test_checkpoint_restore_rejects_inconsistent_last_step_and_nonfinite_pose_sample() -> None:
+    initial = _state()
+    step = _correlation()
+    adopted = initial.adopt_candidate(_candidate(step), expected_step=step)
+
+    inconsistent = json.loads(adopted.checkpoint_bytes())
+    inconsistent["last_physical_step"]["morphology_revision"] = "morph.stale"
+    with pytest.raises(ValueError, match="invalid Embodiment physical checkpoint value"):
+        EmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(inconsistent, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        )
+
+    with pytest.raises(ValueError, match="pose numeric sample_value must be finite"):
+        replace(initial, pose=replace(initial.pose, sample_value=float("nan")))
+
+    nonfinite_sample = json.loads(initial.checkpoint_bytes())
+    nonfinite_sample["pose"]["sample_value"] = float("inf")
+    with pytest.raises(ValueError, match="invalid Embodiment physical checkpoint value"):
+        EmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(nonfinite_sample, sort_keys=True, separators=(",", ":"), allow_nan=True).encode()
+        )

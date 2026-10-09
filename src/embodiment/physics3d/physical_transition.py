@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from embodiment.observation import BodyPoseSample
 
 
@@ -89,6 +90,26 @@ class EmbodimentPhysicalState:
             raise ValueError("causal_tick must be a non-negative integer")
         if self.pose.body_id != self.body_id:
             raise ValueError("pose body identity differs from owner state")
+        sample_value = self.pose.sample_value
+        if isinstance(sample_value, bool) or not isinstance(sample_value, (int, float, str)):
+            raise ValueError("pose sample_value must be a string or number")
+        if isinstance(sample_value, (int, float)) and not math.isfinite(float(sample_value)):
+            raise ValueError("pose numeric sample_value must be finite")
+        if self.last_physical_step is not None:
+            step = self.last_physical_step
+            if not isinstance(step, PhysicalStepCorrelation):
+                raise ValueError("last_physical_step must be a physical-step correlation")
+            if (
+                step.world_id != self.world_id
+                or step.body_id != self.body_id
+                or step.embodiment_episode_id != self.embodiment_episode_id
+                or step.morphology_revision != self.morphology_revision
+            ):
+                raise ValueError("last physical step identity/revision differs from owner state")
+            if step.causal_tick + 1 != self.causal_tick:
+                raise ValueError("last physical step tick does not precede owner state tick")
+            if self.pose.sample_kind != "physics_step" or self.pose.sample_value != step.physical_step_id:
+                raise ValueError("owner pose sample does not identify the last accepted physical step")
 
     @property
     def durably_referenceable(self) -> bool:
