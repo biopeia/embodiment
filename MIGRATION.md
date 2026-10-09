@@ -170,3 +170,25 @@ Embodiment and prohibits Cognition and Foundation from importing or consuming
 it (`docs/design/core/temporal-scales-and-clock-separation-v1.md`, lines
 90–94 and 194–197). This candidate does not establish target-wide compliance
 or runtime conformance. The source monorepo remains unchanged.
+## Additional slice: owner command to physical-port projection (candidate)
+
+| Source element | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| Opaque `MotorCommand` / `ActuatorSurface` to articulated effector ordinal adapter | REWRITE / COMPOSE | `src/embodiment/physics3d/actuation_projection.py` | Reconstructed from pinned source SHA `80d372a186513035f85a769db886e505cabba52d`: `symbiont/src/symbiont/actuation/action.py` and `surface.py` (source-path commit `13720935595fedabec2c376dc933629b0deae5aa`); `lab/src/lab/integration/physics3d/apparatus.py` (commit `792d2dbd3e507d1d41300456cf826d8efe19fddb`); `lab/src/lab/physics3d/runtime.py` (commit `5e9a250f103373ed1333c05f96bc2554abdf5020`); `embodiment/src/embodiment/physics3d/articulated.py` (commit `cea69ac01681811cce0ed23d87c514b9eb048fdb`). |
+| Focused projection tests | REWRITE | `tests/test_actuation_projection.py` | Checks provenance rejection, exact cardinality, ordinal mapping, sparse zero-fill, and actuator constraints. |
+
+The adapter requires an exact ordered surface-to-effector cardinality before
+mapping opaque actuator IDs by ordinal. It checks fingerprint equality, channel
+availability and declared command bounds, and requires explicit body-pose /
+checkpoint identity agreement. The caller must also supply an explicitly
+validated `expected_embodiment_id` matching the command; this code does not
+assume that the command's `embodiment_id` and checkpoint's `episode_id` have
+identical semantics. A surface fingerprint alone is not a body identity, nor
+does it prove that the passed surface was constructed for the passed body spec;
+the integration caller remains responsible for supplying that selected
+surface/spec association. Source runtime defaults omitted physical ports to
+zero; the projection makes those zeroes and their output port IDs explicit.
+
+This is an engine-neutral input candidate, not a solver adapter, delivered
+actuator result, body-state mutation, or evidence of Embodiment owner acceptance.
+It has no runtime import of Organism's command/surface implementation.
