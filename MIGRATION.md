@@ -47,11 +47,24 @@ complete portable Organism continuation or a World causal manifest. It has no
 atomic cross-authority publication, crash recovery, storage durability, or
 scientific efficacy guarantee. The source monorepo remains unchanged.
 
+## Additional slice: Physics3D coordinate declarations
+
+| Source path | Disposition | Target path | Provenance / boundary |
+| --- | --- | --- | --- |
+| `embodiment/src/embodiment/physics3d/observation_contract.py` | MOVE (copy-first) | `src/embodiment/physics3d/observation_contract.py` | Source repository SHA `80d372a186513035f85a769db886e505cabba52d`; source-path commit `7100357bf146b906abfe020511258e6eefa1c1db`; source file SHA-256 `df287d3eb8089d1c96597aba00e7d88e1a2ae7df470d475b48b2e1b34a23cf0e`. Stdlib-only coordinate, frame, unit, and revision declarations. |
+| `embodiment/tests/test_observation_contract.py` | SPLIT / REWRITE | `tests/test_physics3d_observation_contract.py` | Carries only metadata assertions for the migrated declarations. The source test's `BodyPoseSample`, `JointKinematicState`, and physiology sample checks depend on unmigrated observation models and are deferred. |
+
+This slice defines metadata only. It does not implement a physics solver, prove
+that a runtime publishes conforming samples, define actuator mapping, or establish
+scientific/physical validity. The engine-specific `physics3d.world` reference
+frame label is retained as source contract metadata and is not a World identity.
+
 ## Known rewrites
 
 - `physiology_config.py` excludes unused `prospective_*` parameters for Organism deliberation; no other physiology semantics were changed.
 - Python distribution/import name is `embodiment`; no `biopeia_*` prefix is used.
 - The additional `physics3d.mechanics` module is a physical-apparatus value contract, not a new semantic authority or a claim that Physics3D is owned by Embodiment in full.
+- `physics3d.observation_contract` is a coordinate/kinematics declaration only; its metadata tests do not establish runtime conformance.
 - This package is an extraction candidate only; no CURRENT/TARGET compliance is implied.
 - The copied `LivingBodyState` uses the CURRENT enum label `VitalState.DEAD`; this extraction does not reinterpret it as TARGET `ORGANISM_DEATH`. Applicability is bounded to body-state code and requires later contract mapping.
 
