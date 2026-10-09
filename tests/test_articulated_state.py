@@ -188,6 +188,42 @@ def test_articulated_checkpoint_is_deterministic_and_restores_exact_state() -> N
     assert payload["velocity_unit"] == "rad/s"
 
 
+def test_restored_articulated_state_can_continue_on_the_next_causal_step() -> None:
+    first = _state().adopt_candidate(_candidate(), expected_step=_correlation())
+    resumed = ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+        first.checkpoint_bytes(), active_morphology=first.morphology
+    )
+    second_step = _correlation(causal_tick=5, physical_step_id="step.6")
+    second_candidate = SolverArticulatedCandidate(
+        root=SolverBodyCandidate(
+            correlation=second_step,
+            reference_frame="physics3d.world",
+            body_frame="body.root",
+            position_m=(0.0, 0.0, 0.8),
+            orientation_xyzw=(0.0, 0.0, 0.0, 1.0),
+            linear_velocity_m_per_s=(0.0, 0.0, -1.0),
+            angular_velocity_rad_per_s=(0.0, 0.0, 0.0),
+        ),
+        joints=(
+            JointKinematicState("joint.hip", -0.4, -0.2),
+            JointKinematicState("joint.elbow", 0.5, 0.3),
+        ),
+    )
+
+    second = resumed.adopt_candidate(second_candidate, expected_step=second_step)
+
+    assert first.causal_tick == 5
+    assert second.causal_tick == 6
+    assert second.root.last_physical_step == second_step
+    assert [(item.joint_id, item.position_rad) for item in second.joints] == [
+        ("joint.elbow", 0.5),
+        ("joint.hip", -0.4),
+    ]
+    assert ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+        second.checkpoint_bytes(), active_morphology=second.morphology
+    ) == second
+
+
 def test_articulated_checkpoint_rejects_unknown_schema_and_implicit_units() -> None:
     state = _state()
     payload = json.loads(state.checkpoint_bytes())
