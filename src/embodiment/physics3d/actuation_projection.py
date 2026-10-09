@@ -30,11 +30,12 @@ class MotorCommandLike(Protocol):
 
 
 class ActuatorChannelLike(Protocol):
-    """Validated command range for one opaque actuator channel."""
+    """Command range for one opaque actuator channel."""
 
     actuator_id: str
     available: bool
     command_min: float
+    neutral: float
     command_max: float
 
 
@@ -116,6 +117,8 @@ def project_motor_command(
     channel_ids = tuple(channel.actuator_id for channel in surface_channels)
     if channel_ids != actuator_ids:
         raise ValueError("surface channel order disagrees with actuator_ids")
+    for channel in surface_channels:
+        _validate_surface_channel(channel)
     effector_ids = tuple(spec.effector_ids())
     if len(actuator_ids) != len(effector_ids):
         raise ValueError("physical body effector surface must exactly match motor constitution")
@@ -177,6 +180,24 @@ def _required_text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{label} must be a non-empty string")
     return value
+
+
+def _validate_surface_channel(channel: ActuatorChannelLike) -> None:
+    """Recheck the surface value contract at this structural boundary."""
+
+    if not isinstance(channel.available, bool):
+        raise ValueError("actuator availability must be boolean")
+
+    values = (channel.command_min, channel.neutral, channel.command_max)
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
+        raise ValueError("actuator command range values must be numeric")
+    minimum, neutral, maximum = (float(value) for value in values)
+    if not all(math.isfinite(value) for value in (minimum, neutral, maximum)):
+        raise ValueError("actuator command range values must be finite")
+    if not 0.0 <= minimum <= neutral <= maximum <= 1.0:
+        raise ValueError(
+            "actuator command contract must satisfy 0 <= min <= neutral <= max <= 1"
+        )
 
 
 __all__ = [

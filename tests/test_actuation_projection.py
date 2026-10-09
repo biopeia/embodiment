@@ -12,6 +12,7 @@ class Channel:
     actuator_id: str
     available: bool = True
     command_min: float = 0.0
+    neutral: float = 0.0
     command_max: float = 1.0
 
 
@@ -39,7 +40,8 @@ class Command:
 
 def inputs(command=Command(), surface=None, *, body_id="body-1", episode_id="episode-1"):
     surface = surface or Surface(
-        "surface-fp", (Channel("opaque-a"), Channel("opaque-b", command_min=0.2))
+        "surface-fp",
+        (Channel("opaque-a"), Channel("opaque-b", command_min=0.2, neutral=0.2)),
     )
     pose = BodyPoseSample(
         body_id, "physics3d.world", "body.root", (0, 0, 0), (0, 0, 0, 1), "test", 1
@@ -108,4 +110,38 @@ def test_rejects_activation_outside_surface_command_range():
         surface=Surface("surface-fp", (Channel("opaque-a", command_max=0.5), Channel("opaque-b"))),
     )
     with pytest.raises(ValueError, match="outside the actuator command range"):
+        project(values)
+
+
+@pytest.mark.parametrize("available", [0, 1, None, "yes"])
+def test_rejects_non_boolean_surface_availability(available):
+    values = inputs(
+        surface=Surface(
+            "surface-fp",
+            (Channel("opaque-a", available=available), Channel("opaque-b")),
+        )
+    )
+
+    with pytest.raises(ValueError, match="availability must be boolean"):
+        project(values)
+
+
+@pytest.mark.parametrize(
+    "channel, message",
+    [
+        (Channel("opaque-a", command_min=float("nan")), "must be finite"),
+        (Channel("opaque-a", neutral=float("inf")), "must be finite"),
+        (Channel("opaque-a", command_max=float("nan")), "must be finite"),
+        (Channel("opaque-a", command_min=0.8, neutral=0.4), "must satisfy"),
+        (Channel("opaque-a", neutral=1.1), "must satisfy"),
+        (Channel("opaque-a", command_min=-0.1), "must satisfy"),
+        (Channel("opaque-a", command_min=True), "must be numeric"),
+    ],
+)
+def test_rejects_invalid_surface_command_ranges(channel, message):
+    values = inputs(
+        surface=Surface("surface-fp", (channel, Channel("opaque-b")))
+    )
+
+    with pytest.raises(ValueError, match=message):
         project(values)
