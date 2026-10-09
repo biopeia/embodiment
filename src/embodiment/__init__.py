@@ -11,7 +11,6 @@ from .physiology import (
 )
 from .physiology_config import DEFAULT_PHYSIOLOGY_CONFIG, PhysiologyConfig
 from .intake import MaterialTransfer, absorb_material_transfer
-from .somatic_cycle import SomaticCycle
 
 __all__ = [
     "BodyStructureState",
@@ -25,7 +24,6 @@ __all__ = [
     "PhysiologyController",
     "PhysiologySnapshot",
     "ResourcePressure",
-    "SomaticCycle",
     "VitalState",
     "absorb_material_transfer",
 ]
