@@ -233,6 +233,12 @@ def test_articulated_checkpoint_rejects_unknown_schema_and_implicit_units() -> N
             json.dumps(payload).encode(), active_morphology=state.morphology
         )
     payload = json.loads(state.checkpoint_bytes())
+    payload["schema_version"] = True
+    with pytest.raises(ValueError, match="unsupported"):
+        ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(payload).encode(), active_morphology=state.morphology
+        )
+    payload = json.loads(state.checkpoint_bytes())
     payload["position_unit"] = ""
     with pytest.raises(ValueError, match="unsupported"):
         ArticulatedEmbodimentPhysicalState.restore_checkpoint(

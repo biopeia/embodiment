@@ -218,7 +218,12 @@ class ArticulatedEmbodimentPhysicalState:
         }
         if not isinstance(payload, dict) or set(payload) != expected:
             raise ValueError("invalid articulated Embodiment checkpoint fields")
-        if payload["schema_version"] != 1 or payload["position_unit"] != "rad" or payload["velocity_unit"] != "rad/s":
+        if (
+            type(payload["schema_version"]) is not int
+            or payload["schema_version"] != 1
+            or payload["position_unit"] != "rad"
+            or payload["velocity_unit"] != "rad/s"
+        ):
             raise ValueError("unsupported articulated Embodiment checkpoint schema or units")
         expected_binding = {
             "body_id": active_morphology.body_id,
