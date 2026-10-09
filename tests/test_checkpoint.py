@@ -46,3 +46,12 @@ def test_checkpoint_requires_ledger_bound_to_same_body_object():
 
     with pytest.raises(ValueError, match="bound"):
         EmbodimentCheckpoint("body", "episode", body, ledger)
+
+
+def test_owner_checkpoint_validation_checks_identity_schema_and_bytes():
+    encoded = _checkpoint().to_bytes()
+
+    assert EmbodimentCheckpoint.validate_checkpoint(encoded, "body-17", "embodiment-checkpoint-v1")
+    assert not EmbodimentCheckpoint.validate_checkpoint(encoded, "body-other", "embodiment-checkpoint-v1")
+    assert not EmbodimentCheckpoint.validate_checkpoint(encoded, "body-17", "unsupported-schema")
+    assert not EmbodimentCheckpoint.validate_checkpoint(b"not a checkpoint", "body-17", "embodiment-checkpoint-v1")
