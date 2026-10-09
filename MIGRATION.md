@@ -180,14 +180,18 @@ or runtime conformance. The source monorepo remains unchanged.
 
 The target association is explicit: each command actuator ID resolves through
 the supplied active revision's surface to a stable effector ID; surface order
-has no mapping authority. Command, surface, active morphology, pose, and
-Embodiment checkpoint must agree on body, embodiment episode, and morphology
-revision. Every active effector has a declared quantity, unit, range, neutral,
-and saturation policy. Out-of-range values are rejected. A missing command
-channel remains absent and means no command; it is not converted to zero,
-neutral, hold, or another inferred action. The returned
-`PhysicalActuationCandidate` is sparse and immutable, carrying contracts and
-provenance; it is not a solver result.
+has no mapping authority. The surface's schema is validated against the active
+morphology revision. Every emitted channel explicitly repeats `body_id`,
+`embodiment_episode_id`, `morphology_revision`, `effector_id`, and
+`command_kind`, as well as the value and its quantity/unit/range/neutral/
+saturation contract. Command, surface, active morphology, pose, and Embodiment
+checkpoint must agree on body, embodiment episode, and morphology revision.
+Out-of-range values are rejected; no clipping or saturation is inferred. A
+missing command channel remains absent and means no command; it is not
+converted to zero, neutral, hold, or another inferred action. Neutrality is
+available only as the effector descriptor's explicit `neutral` value and is
+not used as an omission default. The returned `PhysicalActuationCandidate` is
+sparse and immutable; it is not a solver result or somatic state transition.
 
 Remaining work is explicit: command producers and active-morphology/surface
 owners must supply these fields; this repository does not define which

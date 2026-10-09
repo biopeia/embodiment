@@ -20,7 +20,7 @@ SaturationPolicy = Literal["reject"]
 
 
 class MotorCommandLike(Protocol):
-    """Owner-issued command carrying explicit body and morphology lineage."""
+    """Organism-issued command bound to its current embodiment episode."""
 
     command_id: str
     commitment_id: str
@@ -29,10 +29,7 @@ class MotorCommandLike(Protocol):
     surface_fingerprint: str
     channels: tuple[tuple[str, float], ...]
     issued_at_tick: int
-    body_id: str
-    embodiment_episode_id: str
-    morphology_revision: str
-    command_kind: str
+    embodiment_id: str | None
 
 
 class EffectorContractLike(Protocol):
@@ -80,23 +77,11 @@ class ActuatorSurfaceLike(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class PhysicalEffectorContract:
-    """Immutable quantity, unit, range, neutral and saturation declaration."""
-
-    effector_id: str
-    quantity: str
-    unit: str
-    minimum: float
-    neutral: float
-    maximum: float
-    saturation: SaturationPolicy
-
-
-@dataclass(frozen=True, slots=True)
 class PhysicalActuationCandidate:
-    """Sparse commands addressed by stable effector id; omissions stay absent.
+    """Sparse commands addressed by stable, fully-contextual effector channels.
 
-    Values have the quantity and unit declared in ``effector_contracts``.
+    Each physical channel repeats its body, episode, morphology revision,
+    effector, command semantics and units. Omitted channels stay absent.
     Out-of-range values are rejected, never clipped or saturated implicitly.
     This candidate is not a delivered force/work result or body-state update.
     """
@@ -111,8 +96,25 @@ class PhysicalActuationCandidate:
     competence_id: str | None
     surface_fingerprint: str
     issued_at_tick: int
-    channels: tuple[tuple[str, float], ...]
-    effector_contracts: tuple[PhysicalEffectorContract, ...]
+    channels: tuple[PhysicalActuationChannel, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PhysicalActuationChannel:
+    """One sparse physical command with explicit identity and units."""
+
+    body_id: str
+    embodiment_episode_id: str
+    morphology_revision: str
+    effector_id: str
+    command_kind: str
+    value: float
+    quantity: str
+    unit: str
+    minimum: float
+    neutral: float
+    maximum: float
+    saturation: SaturationPolicy
 
 
 def project_motor_command(
@@ -122,6 +124,7 @@ def project_motor_command(
     *,
     body_pose: BodyPoseSample,
     embodiment_checkpoint: EmbodimentCheckpoint,
+    command_kind: str,
 ) -> PhysicalActuationCandidate:
     """Validate provenance/contracts and return sparse effector commands.
 
@@ -149,15 +152,11 @@ def project_motor_command(
         raise ValueError("checkpoint body identity does not match active morphology")
     if _required_text(embodiment_checkpoint.episode_id, "checkpoint episode_id") != episode_id:
         raise ValueError("checkpoint episode identity does not match active morphology")
-    if _required_text(command.body_id, "command body_id") != body_id:
-        raise ValueError("motor command targets a different body")
-    if _required_text(command.embodiment_episode_id, "command embodiment_episode_id") != episode_id:
+    if _required_text(command.embodiment_id, "command embodiment_id") != episode_id:
         raise ValueError("motor command targets a different embodiment episode")
-    if _required_text(command.morphology_revision, "command morphology_revision") != revision:
-        raise ValueError("motor command targets a different morphology revision")
     if _required_text(surface.morphology_revision, "surface morphology_revision") != revision:
         raise ValueError("actuator surface targets a different morphology revision")
-    command_kind = _required_text(command.command_kind, "command_kind")
+    command_kind = _required_text(command_kind, "command_kind")
 
     issued_at_tick = command.issued_at_tick
     if isinstance(issued_at_tick, bool) or not isinstance(issued_at_tick, int) or issued_at_tick < 0:
@@ -225,6 +224,23 @@ def project_motor_command(
     if competence_id is not None and (not isinstance(competence_id, str) or not competence_id):
         raise ValueError("competence_id must be a non-empty string or None")
 
+    physical_channels = tuple(
+        PhysicalActuationChannel(
+            body_id=body_id,
+            embodiment_episode_id=episode_id,
+            morphology_revision=revision,
+            effector_id=effector_id,
+            command_kind=command_kind,
+            value=value,
+            quantity=effectors_by_id[effector_id].quantity,
+            unit=effectors_by_id[effector_id].unit,
+            minimum=float(effectors_by_id[effector_id].minimum),
+            neutral=float(effectors_by_id[effector_id].neutral),
+            maximum=float(effectors_by_id[effector_id].maximum),
+            saturation=effectors_by_id[effector_id].saturation,
+        )
+        for effector_id, value in sorted(values_by_effector.items())
+    )
     return PhysicalActuationCandidate(
         body_id=body_id,
         embodiment_episode_id=episode_id,
@@ -236,19 +252,7 @@ def project_motor_command(
         competence_id=competence_id,
         surface_fingerprint=fingerprint,
         issued_at_tick=issued_at_tick,
-        channels=tuple(sorted(values_by_effector.items())),
-        effector_contracts=tuple(
-            PhysicalEffectorContract(
-                effector_id=effector.effector_id,
-                quantity=effector.quantity,
-                unit=effector.unit,
-                minimum=float(effector.minimum),
-                neutral=float(effector.neutral),
-                maximum=float(effector.maximum),
-                saturation=effector.saturation,
-            )
-            for effector in sorted(morphology_effectors, key=lambda item: item.effector_id)
-        ),
+        channels=physical_channels,
     )
 
 
@@ -292,7 +296,7 @@ __all__ = [
     "MorphologyLike",
     "MotorCommandLike",
     "PhysicalActuationCandidate",
-    "PhysicalEffectorContract",
+    "PhysicalActuationChannel",
     "SaturationPolicy",
     "project_motor_command",
 ]

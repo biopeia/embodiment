@@ -59,10 +59,7 @@ class Command:
     surface_fingerprint: str = "surface-fp"
     channels: tuple[tuple[str, float], ...] = (("actuator-a", 0.5),)
     issued_at_tick: int = 7
-    body_id: str = "body-1"
-    embodiment_episode_id: str = "episode-1"
-    morphology_revision: str = "morphology-r1"
-    command_kind: str = "normalized_activation"
+    embodiment_id: str | None = "episode-1"
 
 
 def inputs(command=Command(), surface=None, morphology=Morphology()):
@@ -92,6 +89,7 @@ def project(values):
         morphology,
         body_pose=pose,
         embodiment_checkpoint=checkpoint,
+        command_kind="normalized_activation",
     )
 
 
@@ -106,11 +104,17 @@ def test_maps_by_stable_effector_id_and_omission_means_no_command():
         tuple(reversed(surface.channels)),
     )
     result = project((command, reversed_surface, morphology, pose, checkpoint))
-    assert result.channels == (("elbow.flexor", 0.5),)
-    assert tuple(item.effector_id for item in result.effector_contracts) == (
-        "elbow.flexor",
-        "wrist.rotator",
-    )
+    assert tuple(
+        (item.effector_id, item.value) for item in result.channels
+    ) == (("elbow.flexor", 0.5),)
+    channel = result.channels[0]
+    assert channel.body_id == "body-1"
+    assert channel.embodiment_episode_id == "episode-1"
+    assert channel.morphology_revision == "morphology-r1"
+    assert channel.command_kind == "normalized_activation"
+    assert channel.quantity == "normalized_command"
+    assert channel.unit == "1"
+    assert (channel.minimum, channel.neutral, channel.maximum) == (0.2, 0.4, 1.0)
     assert result.body_id == "body-1"
     assert result.embodiment_episode_id == "episode-1"
     assert result.morphology_revision == "morphology-r1"
@@ -122,9 +126,7 @@ def test_maps_by_stable_effector_id_and_omission_means_no_command():
     "command, surface, morphology, message",
     [
         (Command(surface_fingerprint="wrong"), None, None, "different actuator surface"),
-        (Command(body_id="other"), None, None, "different body"),
-        (Command(embodiment_episode_id="other"), None, None, "different embodiment episode"),
-        (Command(morphology_revision="old"), None, None, "different morphology revision"),
+        (Command(embodiment_id="other"), None, None, "different embodiment episode"),
         (Command(channels=(("unknown", 0.3),)), None, None, "outside the current surface"),
     ],
 )
