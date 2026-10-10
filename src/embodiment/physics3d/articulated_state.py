@@ -27,6 +27,18 @@ from embodiment.physics3d.physical_transition import (
 )
 
 
+ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA = "embodiment-articulated-physical-checkpoint-v2"
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate checkpoint key: {key}")
+        result[key] = value
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class JointRange:
     joint_id: str
@@ -253,8 +265,8 @@ class ArticulatedEmbodimentPhysicalState:
         if not isinstance(encoded, bytes):
             raise ValueError("articulated checkpoint must be bytes")
         try:
-            payload = json.loads(encoded)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            payload = json.loads(encoded, object_pairs_hook=_unique_json_object)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("invalid articulated Embodiment checkpoint JSON") from exc
         expected = {
             "schema_version", "state_owner", "root", "active_morphology", "joints",
@@ -299,7 +311,7 @@ class ArticulatedEmbodimentPhysicalState:
             root = EmbodimentPhysicalState.restore_checkpoint(
                 json.dumps(payload["root"], sort_keys=True, separators=(",", ":")).encode()
             )
-            return cls(
+            restored = cls(
                 root=root,
                 morphology=active_morphology,
                 joints=tuple(JointKinematicState(**item) for item in payload["joints"]),
@@ -307,6 +319,89 @@ class ArticulatedEmbodimentPhysicalState:
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("invalid articulated Embodiment checkpoint value") from exc
+        # The owner reference authenticates the exact bytes, while restoration
+        # verification compares a state re-encoded by this schema. Requiring
+        # canonical input here keeps those two checks consistent and prevents
+        # multiple byte encodings from representing the same checkpoint state.
+        if restored.checkpoint_bytes() != encoded:
+            raise ValueError("non-canonical articulated Embodiment checkpoint encoding")
+        return restored
+
+    @classmethod
+    def validate_checkpoint(
+        cls,
+        encoded: bytes,
+        *,
+        active_morphology: ActiveArticulatedMorphology,
+        expected_sha256: str,
+        schema_version: str,
+    ) -> bool:
+        """Validate checkpoint bytes against owner-held identity and reference integrity.
+
+        ``expected_sha256`` must come from an independent owner checkpoint
+        reference (for example the checkpoint reference recorded at commit),
+        not be calculated from the bytes currently under validation. This
+        establishes byte integrity relative to that reference; it does not
+        prove durable storage or recovery from a crash.
+        """
+
+        if schema_version != ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA:
+            return False
+        if not isinstance(active_morphology, ActiveArticulatedMorphology):
+            return False
+        if not _is_sha256(expected_sha256) or not isinstance(encoded, bytes):
+            return False
+        if hashlib.sha256(encoded).hexdigest() != expected_sha256:
+            return False
+        try:
+            restored = cls.restore_checkpoint(encoded, active_morphology=active_morphology)
+        except (TypeError, ValueError):
+            return False
+        return (
+            restored.morphology.body_id == active_morphology.body_id
+            and restored.morphology.embodiment_episode_id
+            == active_morphology.embodiment_episode_id
+            and restored.morphology.morphology_revision
+            == active_morphology.morphology_revision
+            and restored.morphology.morphology_sha256
+            == active_morphology.morphology_sha256
+        )
+
+    @classmethod
+    def verify_restoration(
+        cls,
+        encoded: bytes,
+        restored: ArticulatedEmbodimentPhysicalState,
+        *,
+        active_morphology: ActiveArticulatedMorphology,
+        expected_sha256: str,
+        schema_version: str,
+    ) -> bool:
+        """Verify restored owner state is exactly the independently referenced checkpoint."""
+
+        if not cls.validate_checkpoint(
+            encoded,
+            active_morphology=active_morphology,
+            expected_sha256=expected_sha256,
+            schema_version=schema_version,
+        ):
+            return False
+        if not isinstance(restored, cls):
+            return False
+        if restored.morphology != active_morphology:
+            return False
+        try:
+            restored_bytes = restored.checkpoint_bytes()
+        except (TypeError, ValueError):
+            return False
+        return (
+            restored_bytes == encoded
+            and hashlib.sha256(restored_bytes).hexdigest() == expected_sha256
+            and restored.root.body_id == active_morphology.body_id
+            and restored.root.embodiment_episode_id
+            == active_morphology.embodiment_episode_id
+            and restored.morphology_revision == active_morphology.morphology_revision
+        )
 
 
 def _identity(value: object, name: str) -> str:
@@ -316,8 +411,22 @@ def _identity(value: object, name: str) -> str:
 
 
 def _finite(value: object, name: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{name} must be a finite number")
+    try:
+        finite = math.isfinite(float(value))
+    except OverflowError as exc:
+        raise ValueError(f"{name} must be a finite number") from exc
+    if not finite:
+        raise ValueError(f"{name} must be a finite number")
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
 
 
 def _unique_by_id(items: tuple[JointRange, ...] | tuple[JointKinematicState, ...], label: str):
@@ -334,6 +443,7 @@ def _unique_by_id(items: tuple[JointRange, ...] | tuple[JointKinematicState, ...
 
 
 __all__ = [
+    "ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA",
     "ActiveArticulatedMorphology",
     "ArticulatedEmbodimentPhysicalState",
     "JointKinematicState",

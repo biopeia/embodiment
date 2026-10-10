@@ -1,10 +1,12 @@
 from dataclasses import dataclass, replace
+import hashlib
 import json
 
 import pytest
 
 from embodiment.observation import BodyPoseSample
 from embodiment.physics3d.articulated_state import (
+    ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
     ActiveArticulatedMorphology,
     ArticulatedEmbodimentPhysicalState,
     JointKinematicState,
@@ -324,4 +326,154 @@ def test_state_and_checkpoint_must_match_active_morphology_descriptor() -> None:
     with pytest.raises(ValueError, match="checkpoint morphology binding"):
         ArticulatedEmbodimentPhysicalState.restore_checkpoint(
             encoded, active_morphology=_morphology("morph.next")
+        )
+
+
+def test_owner_validation_and_restoration_verification_bind_checkpoint_reference() -> None:
+    state = _state()
+    encoded = state.checkpoint_bytes()
+    reference_digest = state.checkpoint_digest
+
+    assert ArticulatedEmbodimentPhysicalState.validate_checkpoint(
+        encoded,
+        active_morphology=state.morphology,
+        expected_sha256=reference_digest,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+    restored = ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+        encoded, active_morphology=state.morphology
+    )
+    assert ArticulatedEmbodimentPhysicalState.verify_restoration(
+        encoded,
+        restored,
+        active_morphology=state.morphology,
+        expected_sha256=reference_digest,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+
+
+def test_owner_validation_and_restore_reject_noncanonical_json_bytes() -> None:
+    state = _state()
+    canonical = state.checkpoint_bytes()
+    noncanonical = json.dumps(json.loads(canonical), indent=2).encode()
+
+    # Integrity is checked against the exact supplied reference, but a valid
+    # digest must not make alternate encodings acceptable to restore while
+    # verify_restoration requires the canonical checkpoint bytes.
+    noncanonical_digest = hashlib.sha256(noncanonical).hexdigest()
+    assert not ArticulatedEmbodimentPhysicalState.validate_checkpoint(
+        noncanonical,
+        active_morphology=state.morphology,
+        expected_sha256=noncanonical_digest,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+    with pytest.raises(ValueError, match="non-canonical"):
+        ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+            noncanonical, active_morphology=state.morphology
+        )
+
+
+@pytest.mark.parametrize(
+    "active_morphology",
+    [
+        replace(_morphology(), body_id="body.other"),
+        replace(_morphology(), embodiment_episode_id="episode.other"),
+        _morphology("morph.other"),
+    ],
+)
+def test_owner_validation_rejects_wrong_body_episode_or_revision(active_morphology) -> None:
+    state = _state()
+    encoded = state.checkpoint_bytes()
+
+    assert not ArticulatedEmbodimentPhysicalState.validate_checkpoint(
+        encoded,
+        active_morphology=active_morphology,
+        expected_sha256=state.checkpoint_digest,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+
+
+def test_owner_validation_rejects_malformed_wrong_schema_and_tampered_bytes() -> None:
+    state = _state()
+    encoded = state.checkpoint_bytes()
+    digest = state.checkpoint_digest
+    validate = ArticulatedEmbodimentPhysicalState.validate_checkpoint
+
+    assert not validate(
+        b"not json",
+        active_morphology=state.morphology,
+        expected_sha256=digest,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+    assert not validate(
+        encoded,
+        active_morphology=state.morphology,
+        expected_sha256=digest,
+        schema_version="embodiment-articulated-physical-checkpoint-v1",
+    )
+    assert not validate(
+        encoded,
+        active_morphology=state.morphology,
+        expected_sha256="0" * 64,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+    changed_payload = json.loads(encoded)
+    changed_payload["joints"][0]["position_rad"] += 0.01
+    tampered = json.dumps(changed_payload, sort_keys=True, separators=(",", ":")).encode()
+    assert not validate(
+        tampered,
+        active_morphology=state.morphology,
+        expected_sha256=digest,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+
+
+def test_owner_validation_rejects_integer_overflow_in_checkpoint_numeric_fields() -> None:
+    state = _state()
+    payload = json.loads(state.checkpoint_bytes())
+    payload["joints"][0]["position_rad"] = 10**400
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+
+    assert not ArticulatedEmbodimentPhysicalState.validate_checkpoint(
+        encoded,
+        active_morphology=state.morphology,
+        expected_sha256=hashlib.sha256(encoded).hexdigest(),
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+    with pytest.raises(ValueError, match="invalid articulated Embodiment checkpoint value"):
+        ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+            encoded, active_morphology=state.morphology
+        )
+
+
+def test_restoration_verification_rejects_state_from_another_checkpoint_without_mutation() -> None:
+    state = _state()
+    encoded = state.checkpoint_bytes()
+    restored = ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+        encoded, active_morphology=state.morphology
+    )
+    other = ArticulatedEmbodimentPhysicalState(
+        root=replace(restored.root, causal_tick=restored.causal_tick + 1),
+        morphology=restored.morphology,
+        joints=restored.joints,
+    )
+    before = other.checkpoint_bytes()
+
+    assert not ArticulatedEmbodimentPhysicalState.verify_restoration(
+        encoded,
+        other,
+        active_morphology=state.morphology,
+        expected_sha256=state.checkpoint_digest,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+    assert other.checkpoint_bytes() == before
+
+
+def test_articulated_checkpoint_rejects_duplicate_json_keys() -> None:
+    encoded = _state().checkpoint_bytes()
+    duplicate = encoded.replace(b'"schema_version":2', b'"schema_version":2,"schema_version":2', 1)
+
+    with pytest.raises(ValueError, match="invalid articulated Embodiment checkpoint JSON"):
+        ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+            duplicate, active_morphology=_morphology()
         )
