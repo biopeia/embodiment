@@ -141,7 +141,10 @@ class MetabolicLedger:
             isinstance(values[k], bool) or not isinstance(values[k], (int, float)) for k in _KINDS
         ):
             raise ValueError(f"{label} values must be numeric")
-        result = {k: float(values[k]) for k in _KINDS}
+        try:
+            result = {k: float(values[k]) for k in _KINDS}
+        except OverflowError as exc:
+            raise ValueError(f"{label} values must be finite") from exc
         if any(not math.isfinite(v) for v in result.values()):
             raise ValueError(f"{label} values must be finite")
         if positive:
@@ -395,7 +398,7 @@ class MetabolicLedger:
             raise ValueError("invalid metabolic checkpoint physiology configuration")
         try:
             stored_config = PhysiologyConfig(**config_payload)
-        except (TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             raise ValueError("invalid metabolic checkpoint physiology configuration") from exc
         if physiology_config is not None and physiology_config != stored_config:
             raise ValueError("supplied physiology configuration contradicts checkpoint")
@@ -425,11 +428,13 @@ class MetabolicLedger:
                 raise ValueError("invalid metabolic checkpoint spent")
         for label in ("physical_energy_reserve", "physical_energy_capacity"):
             value = payload[label]
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(value)
-            ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"invalid metabolic checkpoint {label}")
+            try:
+                finite = math.isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
                 raise ValueError(f"invalid metabolic checkpoint {label}")
         energy_reserve = float(payload["physical_energy_reserve"])
         energy_capacity = float(payload["physical_energy_capacity"])

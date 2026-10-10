@@ -73,6 +73,31 @@ def test_checkpoint_rejects_ledger_body_energy_mismatch():
         EmbodimentCheckpoint.from_bytes(json.dumps(payload).encode())
 
 
+@pytest.mark.parametrize(
+    ("section", "field"),
+    [
+        ("capacity", "cognition"),
+        ("physiology_config", "ratio_elevated"),
+        ("physical_energy_capacity", None),
+    ],
+)
+def test_checkpoint_rejects_oversized_json_integers(section: str, field: str | None):
+    payload = json.loads(_checkpoint().to_bytes())
+    value = 10**1000
+    ledger = payload["metabolic_ledger"]
+    if field is None:
+        ledger[section] = value
+    else:
+        ledger[section][field] = value
+    encoded = json.dumps(payload).encode()
+
+    with pytest.raises(ValueError):
+        EmbodimentCheckpoint.from_bytes(encoded)
+    assert not EmbodimentCheckpoint.validate_checkpoint(
+        encoded, "body-17", "embodiment-checkpoint-v2"
+    )
+
+
 def test_checkpoint_requires_ledger_bound_to_same_body_object():
     body = LivingBodyState()
     ledger = MetabolicLedger()
