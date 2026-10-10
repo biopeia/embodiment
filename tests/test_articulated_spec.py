@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 
 import pytest
 
 from embodiment.physics3d.articulated_spec import (
     ArticulatedBodySpec,
     FixedLinkTopology,
+    articulated_body_spec_bytes,
+    articulated_body_spec_sha256,
     build_articulated_urdf,
+    restore_articulated_body_spec,
 )
-from embodiment.physics3d.mechanics import JointSpec, JointTopology, SegmentSpec
+from embodiment.physics3d.mechanics import JointSpec, JointTopology, SegmentSpec, SurfaceMaterial
 
 
 def _spec() -> ArticulatedBodySpec:
@@ -60,3 +64,62 @@ def test_urdf_rejects_mismatched_joint_spec_and_topology() -> None:
 
     with pytest.raises(ValueError, match="length mismatch"):
         build_articulated_urdf(invalid)
+
+
+def test_complete_morphology_checkpoint_encoding_is_deterministic_and_roundtrips() -> None:
+    spec = _spec()
+    encoded = articulated_body_spec_bytes(spec)
+    restored = restore_articulated_body_spec(json.loads(encoded))
+
+    assert restored == spec
+    assert articulated_body_spec_bytes(restored) == encoded
+    assert articulated_body_spec_sha256(restored) == articulated_body_spec_sha256(spec)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"contact_link_names": ("base",)},
+        {"fixed_base": True},
+        {"spawn_height": 0.75},
+        {"state_schema_version": 2},
+        {"structural_neighbour_names": (("base", "arm"), ("arm", "foot"))},
+        {"body_material": SurfaceMaterial(0.7, 0.02, 0.002, 0.02, 0.03, 0.05)},
+    ],
+)
+def test_full_morphology_fingerprint_covers_non_urdf_body_contracts(change) -> None:
+    original = _spec()
+    changed = replace(original, **change)
+
+    assert build_articulated_urdf(changed) == build_articulated_urdf(original)
+    assert articulated_body_spec_sha256(changed) != articulated_body_spec_sha256(original)
+
+
+def test_full_morphology_fingerprint_distinguishes_sub_urdf_precision_mass_changes() -> None:
+    original = _spec()
+    segments = dict(original.segments)
+    segments["base"] = replace(segments["base"], mass=1.00000000001)
+    changed = replace(original, segments=segments)
+
+    assert build_articulated_urdf(changed) == build_articulated_urdf(original)
+    assert articulated_body_spec_sha256(changed) != articulated_body_spec_sha256(original)
+
+
+def test_spec_restore_rejects_unknown_fields_and_non_finite_values() -> None:
+    payload = json.loads(articulated_body_spec_bytes(_spec()))
+    payload["unknown"] = "not accepted"
+    with pytest.raises(ValueError, match="schema or fields"):
+        restore_articulated_body_spec(payload)
+    payload = json.loads(articulated_body_spec_bytes(_spec()))
+    payload["spawn_height"] = float("nan")
+    with pytest.raises(ValueError, match="finite"):
+        restore_articulated_body_spec(payload)
+
+
+def test_spec_restore_rejects_segment_identity_collisions_after_normalization() -> None:
+    payload = json.loads(articulated_body_spec_bytes(_spec()))
+    segment_name, segment = next(iter(payload["segments"].items()))
+    payload["segments"][f" {segment_name} "] = segment
+
+    with pytest.raises(ValueError, match="collide after normalization"):
+        restore_articulated_body_spec(payload)

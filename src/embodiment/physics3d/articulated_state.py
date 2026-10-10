@@ -7,12 +7,19 @@ explicit active morphology binding, never positional authority.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import math
+from types import MappingProxyType
 
-from embodiment.physics3d.articulated_spec import ArticulatedBodySpec, build_articulated_urdf
+from embodiment.physics3d.articulated_spec import (
+    ArticulatedBodySpec,
+    articulated_body_spec_bytes,
+    articulated_body_spec_sha256,
+    build_articulated_urdf,
+    restore_articulated_body_spec,
+)
 from embodiment.physics3d.physical_transition import (
     EmbodimentPhysicalState,
     PhysicalStepCorrelation,
@@ -64,8 +71,7 @@ class ActiveArticulatedMorphology:
     body_id: str
     embodiment_episode_id: str
     morphology_revision: str
-    description_sha256: str
-    joint_ranges: tuple[JointRange, ...]
+    spec: ArticulatedBodySpec
 
     @classmethod
     def from_spec(
@@ -76,31 +82,57 @@ class ActiveArticulatedMorphology:
         morphology_revision: str,
         spec: ArticulatedBodySpec,
     ) -> ActiveArticulatedMorphology:
+        if not isinstance(spec, ArticulatedBodySpec):
+            raise ValueError("active morphology requires an Embodiment body specification")
         topology_ids = tuple(item.joint_name for item in spec.joint_topology)
         spec_ids = tuple(item.name for item in spec.joint_specs)
         if topology_ids != spec_ids:
             raise ValueError("active morphology requires the ordered topology contract of ArticulatedBodySpec")
-        description = build_articulated_urdf(spec)
-        ranges = tuple(
-            JointRange(item.name, item.lower, item.upper, item.max_velocity)
-            for item in spec.joint_specs
-        )
         return cls(
             body_id=body_id,
             embodiment_episode_id=embodiment_episode_id,
             morphology_revision=morphology_revision,
-            description_sha256=hashlib.sha256(description.encode("utf-8")).hexdigest(),
-            joint_ranges=ranges,
+            spec=spec,
         )
 
     def __post_init__(self) -> None:
         for field in ("body_id", "embodiment_episode_id", "morphology_revision"):
             object.__setattr__(self, field, _identity(getattr(self, field), field))
-        digest = _identity(self.description_sha256, "description_sha256")
-        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
-            raise ValueError("description_sha256 must be a lowercase SHA-256 digest")
-        ranges = _unique_by_id(self.joint_ranges, "active joint range")
-        object.__setattr__(self, "joint_ranges", tuple(ranges[key] for key in sorted(ranges)))
+        if not isinstance(self.spec, ArticulatedBodySpec):
+            raise ValueError("active morphology requires the owner-held full body specification")
+        normalized_spec = restore_articulated_body_spec(
+            json.loads(articulated_body_spec_bytes(self.spec))
+        )
+        # Freeze only the owner-bound snapshot. General body specifications
+        # remain mutable mappings so projection callers can verify snapshot
+        # behavior without mutating this active morphology binding.
+        object.__setattr__(
+            self,
+            "spec",
+            replace(normalized_spec, segments=MappingProxyType(dict(normalized_spec.segments))),
+        )
+        if tuple(item.joint_name for item in self.spec.joint_topology) != tuple(
+            item.name for item in self.spec.joint_specs
+        ):
+            raise ValueError("active morphology requires matching ordered joint topology")
+
+    @property
+    def description_sha256(self) -> str:
+        description = build_articulated_urdf(self.spec)
+        return hashlib.sha256(description.encode("utf-8")).hexdigest()
+
+    @property
+    def morphology_sha256(self) -> str:
+        """Content identity over the full declared morphology, not a revision."""
+
+        return articulated_body_spec_sha256(self.spec)
+
+    @property
+    def joint_ranges(self) -> tuple[JointRange, ...]:
+        return tuple(
+            JointRange(item.name, item.lower, item.upper, item.max_velocity)
+            for item in sorted(self.spec.joint_specs, key=lambda value: value.name)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +188,16 @@ class ArticulatedEmbodimentPhysicalState:
     def causal_tick(self) -> int:
         return self.root.causal_tick
 
+    @property
+    def durably_referenceable(self) -> bool:
+        """Encoded state is recoverable data, not proof of durable storage."""
+
+        return False
+
+    @property
+    def checkpoint_digest(self) -> str:
+        return hashlib.sha256(self.checkpoint_bytes()).hexdigest()
+
     def adopt_candidate(
         self,
         candidate: SolverArticulatedCandidate,
@@ -177,14 +219,16 @@ class ArticulatedEmbodimentPhysicalState:
 
     def checkpoint_bytes(self) -> bytes:
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "state_owner": self.state_owner,
             "root": json.loads(self.root.checkpoint_bytes()),
             "active_morphology": {
                 "body_id": self.morphology.body_id,
                 "embodiment_episode_id": self.morphology.embodiment_episode_id,
                 "morphology_revision": self.morphology.morphology_revision,
+                "morphology_sha256": self.morphology.morphology_sha256,
                 "description_sha256": self.morphology.description_sha256,
+                "spec": json.loads(articulated_body_spec_bytes(self.morphology.spec)),
             },
             "joints": [
                 {
@@ -220,7 +264,7 @@ class ArticulatedEmbodimentPhysicalState:
             raise ValueError("invalid articulated Embodiment checkpoint fields")
         if (
             type(payload["schema_version"]) is not int
-            or payload["schema_version"] != 1
+            or payload["schema_version"] != 2
             or payload["position_unit"] != "rad"
             or payload["velocity_unit"] != "rad/s"
         ):
@@ -229,11 +273,27 @@ class ArticulatedEmbodimentPhysicalState:
             "body_id": active_morphology.body_id,
             "embodiment_episode_id": active_morphology.embodiment_episode_id,
             "morphology_revision": active_morphology.morphology_revision,
+            "morphology_sha256": active_morphology.morphology_sha256,
             "description_sha256": active_morphology.description_sha256,
+            "spec": json.loads(articulated_body_spec_bytes(active_morphology.spec)),
         }
-        if payload["active_morphology"] != expected_binding:
+        stored_binding = payload["active_morphology"]
+        if not isinstance(stored_binding, dict) or stored_binding != expected_binding:
             raise ValueError("checkpoint morphology binding differs from active Embodiment descriptor")
         try:
+            stored_spec = restore_articulated_body_spec(stored_binding["spec"])
+            restored_binding = ActiveArticulatedMorphology.from_spec(
+                body_id=stored_binding["body_id"],
+                embodiment_episode_id=stored_binding["embodiment_episode_id"],
+                morphology_revision=stored_binding["morphology_revision"],
+                spec=stored_spec,
+            )
+            if (
+                stored_binding["morphology_sha256"] != restored_binding.morphology_sha256
+                or stored_binding["description_sha256"] != restored_binding.description_sha256
+                or restored_binding != active_morphology
+            ):
+                raise ValueError("checkpoint full morphology does not match owner-active descriptor")
             if not isinstance(payload["root"], dict) or not isinstance(payload["joints"], list):
                 raise ValueError("invalid articulated checkpoint values")
             root = EmbodimentPhysicalState.restore_checkpoint(
