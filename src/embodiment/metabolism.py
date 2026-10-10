@@ -8,7 +8,7 @@ later physiology milestones can act on.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -50,7 +50,7 @@ class MetabolicLedger:
     restore accounting headroom but can never mint physical energy.
     """
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(
         self,
@@ -141,7 +141,10 @@ class MetabolicLedger:
             isinstance(values[k], bool) or not isinstance(values[k], (int, float)) for k in _KINDS
         ):
             raise ValueError(f"{label} values must be numeric")
-        result = {k: float(values[k]) for k in _KINDS}
+        try:
+            result = {k: float(values[k]) for k in _KINDS}
+        except OverflowError as exc:
+            raise ValueError(f"{label} values must be finite") from exc
         if any(not math.isfinite(v) for v in result.values()):
             raise ValueError(f"{label} values must be finite")
         if positive:
@@ -356,6 +359,8 @@ class MetabolicLedger:
             "reserve": dict(self._reserve),
             "physical_energy_reserve": self._body_state.energy_reserve,
             "physical_energy_capacity": self._body_state.max_energy,
+            "physiology_config": asdict(self._config),
+            "spent": dict(self._spent),
         }
 
     @classmethod
@@ -366,32 +371,101 @@ class MetabolicLedger:
         physiology_config: PhysiologyConfig | None = None,
         body_state: LivingBodyState | None = None,
     ) -> "MetabolicLedger":
-        if not isinstance(payload, dict) or payload.get("schema_version") != cls.SCHEMA_VERSION:
+        expected_keys = {
+            "schema_version",
+            "tick",
+            "capacity",
+            "replenishment",
+            "reserve",
+            "physical_energy_reserve",
+            "physical_energy_capacity",
+            "physiology_config",
+            "spent",
+        }
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != expected_keys
+            or type(payload.get("schema_version")) is not int
+            or payload["schema_version"] != cls.SCHEMA_VERSION
+        ):
             raise ValueError("invalid metabolic checkpoint")
         tick = payload.get("tick")
         if isinstance(tick, bool) or not isinstance(tick, int) or tick < 0:
             raise ValueError("invalid metabolic checkpoint tick")
+        config_payload = payload["physiology_config"]
+        expected_config_keys = {field.name for field in fields(PhysiologyConfig)}
+        if not isinstance(config_payload, dict) or set(config_payload) != expected_config_keys:
+            raise ValueError("invalid metabolic checkpoint physiology configuration")
+        try:
+            stored_config = PhysiologyConfig(**config_payload)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError("invalid metabolic checkpoint physiology configuration") from exc
+        if physiology_config is not None and physiology_config != stored_config:
+            raise ValueError("supplied physiology configuration contradicts checkpoint")
+        for label in ("capacity", "replenishment", "reserve", "spent"):
+            values = payload[label]
+            if not isinstance(values, dict):
+                raise ValueError(f"invalid metabolic checkpoint {label}")
+            validated = cls._validate(
+                values,
+                label,
+                positive=(label == "capacity"),
+                allow_negative=(label == "reserve"),
+            )
+            if label == "replenishment" and any(
+                value < 0.0 for value in validated.values()
+            ):
+                raise ValueError("invalid metabolic checkpoint replenishment")
+            if label == "reserve" and any(
+                abs(validated[kind]) > payload["capacity"][kind] for kind in _KINDS
+            ):
+                raise ValueError("invalid metabolic checkpoint reserve")
+            if label == "spent" and any(
+                validated[kind] < 0.0
+                or validated[kind] > payload["capacity"][kind] * 2.0
+                for kind in _KINDS
+            ):
+                raise ValueError("invalid metabolic checkpoint spent")
+        for label in ("physical_energy_reserve", "physical_energy_capacity"):
+            value = payload[label]
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"invalid metabolic checkpoint {label}")
+            try:
+                finite = math.isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise ValueError(f"invalid metabolic checkpoint {label}")
+        energy_reserve = float(payload["physical_energy_reserve"])
+        energy_capacity = float(payload["physical_energy_capacity"])
+        if energy_capacity <= 0.0 or not 0.0 <= energy_reserve <= energy_capacity:
+            raise ValueError("invalid metabolic checkpoint physical energy")
         if body_state is None:
             from .physiology import LivingBodyState
 
             body_state = LivingBodyState(
-                energy_reserve=float(payload["physical_energy_reserve"]),
-                max_energy=float(payload["physical_energy_capacity"]),
+                energy_reserve=energy_reserve,
+                max_energy=energy_capacity,
             )
-        else:
-            if (
-                abs(body_state.energy_reserve - float(payload["physical_energy_reserve"])) > 1e-12
-                or abs(body_state.max_energy - float(payload["physical_energy_capacity"])) > 1e-12
-            ):
-                raise ValueError("living body physical energy contradicts ledger checkpoint")
-        return cls(
+        elif (
+            abs(body_state.energy_reserve - energy_reserve) > 1e-12
+            or abs(body_state.max_energy - energy_capacity) > 1e-12
+        ):
+            raise ValueError("living body physical energy contradicts ledger checkpoint")
+        ledger = cls(
             capacity=payload["capacity"],
             replenishment=payload["replenishment"],
             reserve=payload["reserve"],
             tick=tick,
-            physiology_config=physiology_config,
+            physiology_config=stored_config,
             body_state=body_state,
         )
+        ledger._spent = cls._validate(
+            payload["spent"], "spent", positive=False, allow_negative=False
+        )
+        if any(ledger._spent[kind] > ledger._capacity[kind] * 2.0 for kind in _KINDS):
+            raise ValueError("invalid metabolic checkpoint spent")
+        return ledger
 
 
 __all__ = ["MetabolicLedger", "MetabolicSnapshot", "ResourcePressure"]

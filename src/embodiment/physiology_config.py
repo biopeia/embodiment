@@ -116,7 +116,13 @@ class PhysiologyConfig:
             "reproduction_max_senescence",
         ):
             val = getattr(self, field_name)
-            if not isinstance(val, (int, float)) or not math.isfinite(val):
+            if not isinstance(val, (int, float)):
+                raise ValueError(f"{field_name} must be a finite float")
+            try:
+                finite = math.isfinite(val)
+            except OverflowError:
+                finite = False
+            if not finite:
                 raise ValueError(f"{field_name} must be a finite float")
 
         # Ratio hierarchy

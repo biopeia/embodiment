@@ -15,6 +15,15 @@ from .metabolism import MetabolicLedger
 from .physiology import LivingBodyState
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate checkpoint key: {key}")
+        result[key] = value
+    return result
+
+
 @dataclass(slots=True)
 class EmbodimentCheckpoint:
     """A body state and its metabolic accounting tied to one episode identity."""
@@ -24,7 +33,7 @@ class EmbodimentCheckpoint:
     body_state: LivingBodyState
     metabolic_ledger: MetabolicLedger
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __post_init__(self) -> None:
         if not isinstance(self.body_id, str) or not self.body_id.strip():
@@ -56,8 +65,8 @@ class EmbodimentCheckpoint:
         if not isinstance(encoded, bytes):
             raise ValueError("checkpoint must be bytes")
         try:
-            payload: Any = json.loads(encoded)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            payload: Any = json.loads(encoded, object_pairs_hook=_unique_object)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("invalid embodiment checkpoint JSON") from exc
         expected_keys = {
             "schema_version",
@@ -89,7 +98,7 @@ class EmbodimentCheckpoint:
     @classmethod
     def validate_checkpoint(cls, encoded: bytes, owner_identity: str, schema_version: str) -> bool:
         """Validate Embodiment-owned bytes without issuing a World receipt."""
-        if schema_version != "embodiment-checkpoint-v1":
+        if schema_version != "embodiment-checkpoint-v2":
             return False
         try:
             checkpoint = cls.from_bytes(encoded)
