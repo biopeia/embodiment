@@ -469,3 +469,30 @@ cross-owner authorization, durable recovery, or World commit. Detailed physical
 interpretation of material coefficients remains for a solver-adapter contract.
 The change does not close the first end-to-end physical causal-step milestone
 or the full migration inventory.
+
+
+### Target contract correction: physiology-complete somatic checkpoint
+
+**Disposition: REWRITE the existing Biopeia target checkpoint contract.** This
+is a target-side integrity fix for Embodiment issue
+[#27](https://github.com/biopeia/embodiment/issues/27), not a migration of
+legacy checkpoint code or API. The bounded base is Embodiment
+`97cb09a82b0bc9bf4ad11f6497cce071b85efedd`. The historical source remains
+read-only and no legacy implementation or compatibility behavior is copied.
+
+The envelope advances from schema v1 to v2 and the nested
+`MetabolicLedger` format from v2 to v3. The checkpoint now preserves the exact
+`PhysiologyConfig` and in-progress per-kind `spent` accumulators. Restore
+validates exact field sets, config types and invariants, accounting ranges,
+physical energy values, and schema versions; prior schemas and unknown fields
+are rejected rather than defaulted or ignored. A supplied restore configuration
+must match the stored configuration.
+
+Target-authored tests in `tests/test_checkpoint.py` cover deterministic
+round-trip, custom threshold preservation, pressure interpretation, pending
+spend and deterministic continuation, old/unknown schema rejection, and
+malformed configuration/accounting. This does not define a World tick-phase
+checkpoint policy, correlate this envelope to a World causal cut, prove
+crash/power-loss durability, or make a scientific-equivalence claim. World and
+Lab consumers must move to the v2 owner schema explicitly before using the new
+format; no compatibility fallback is provided.
