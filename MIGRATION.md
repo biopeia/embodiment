@@ -433,3 +433,39 @@ Lab runtime, experiments, monitors, evidence and associated tests are not
 re-dispositioned here; Lab owns their inventory. The source monorepo was not
 modified. No status in this table grants permission to copy legacy code or adds
 backward compatibility.
+
+## Target contract correction: owner-bound articulated physical projection
+
+**Disposition: REWRITE the existing Biopeia target projection.** This is a
+target-side correction, not an extraction of legacy behavior. It addresses
+Biopeia Embodiment issue [#32](https://github.com/biopeia/embodiment/issues/32)
+and finding F-0115, documented in the issue as
+`biopeia/docs/explanation/embodiment/physical-projection.md`. The implementation
+base is Embodiment `f995dcf7d35d4c71dbfbd65a51c68132dd17ea9f`; the source
+monorepo SHA remains the inventory baseline above and was not modified.
+
+The prior API accepted morphology, pose, velocities, and correlation as
+independent arguments. The rewritten projection consumes one
+`ArticulatedEmbodimentPhysicalState` and an explicit
+`PhysicalStepCorrelation`. It binds projection to the source body's World,
+causal tick, body identity, embodiment episode, and morphology revision, then
+projects root pose and velocities plus joint position/velocity by stable joint
+identity. It carries the complete joint identity/range set, explicit `m`/`m/s`,
+`rad`/`rad/s` semantics through typed fields, morphology revision and content
+digest, contact links, surface material, and fixed-base declaration. Direct
+construction of the immutable solver input validates identity, units, finite
+values, quaternion normalization, joint identity/range completeness, material
+value finiteness, and fixed-base type.
+
+The replaced public function signature is removed; no compatibility overload
+or shim is retained. Focused target-authored checks are in
+`tests/test_physical_projection.py` and cover state binding, stable articulated
+projection, immutable snapshot behavior, and invalid direct input.
+
+This projection only verifies correlation equality against its source owner
+state; it does **not** authenticate that World authorized the execution. It does
+not implement solver execution, owner adoption, Environment projection,
+cross-owner authorization, durable recovery, or World commit. Detailed physical
+interpretation of material coefficients remains for a solver-adapter contract.
+The change does not close the first end-to-end physical causal-step milestone
+or the full migration inventory.
