@@ -295,20 +295,29 @@ imply that the source suite was run for this documentation change.
 
 | Source elements | Disposition | Target path | Provenance / boundary |
 | --- | --- | --- | --- |
-| No direct legacy state-adoption implementation is migrated. This is a target-authored composition of the already rewritten `ArticulatedBodySpec`/URDF projection (`embodiment/src/embodiment/physics3d/articulated.py`, source-path commit `cea69ac01681811cce0ed23d87c514b9eb048fdb`), `BodyPoseSample` (`embodiment/src/embodiment/observation.py`, source-path commit `be3236ce13c3aff22353726b5b7aa00ff3e7eac7`), and the source Embodiment body-state implementation under `symbiont/src/symbiont/core/embodiment/`; pinned source repository SHA: `80d372a186513035f85a769db886e505cabba52d`. | REWRITE / COMPOSE | `src/embodiment/physics3d/articulated_state.py` | Target implementation binds root and joint state to body, episode, morphology revision, an active owner-provided descriptor, and the URDF description digest. It accepts solver candidates by stable joint identity, enforces declared position and velocity bounds, and rejects stale or mismatched checkpoints. |
-| Focused target contract checks | REWRITE | `tests/test_articulated_state.py` | Covers identity-based adoption under permuted collection order, invalid/missing/duplicate/out-of-range joint values, stale morphology, descriptor-bound restore, deterministic encoding, and continuation through a second causal step after value restore. |
+| No direct legacy state-adoption implementation is migrated. This is a target-authored composition of the already rewritten `ArticulatedBodySpec`/URDF projection (`embodiment/src/embodiment/physics3d/articulated.py`, source-path commit `cea69ac01681811cce0ed23d87c514b9eb048fdb`), `BodyPoseSample` (`embodiment/src/embodiment/observation.py`, source-path commit `be3236ce13c3aff22353726b5b7aa00ff3e7eac7`), and the source Embodiment body-state implementation under `symbiont/src/symbiont/core/embodiment/`; pinned source repository SHA: `80d372a186513035f85a769db886e505cabba52d`. | REWRITE / COMPOSE | `src/embodiment/physics3d/articulated_state.py`, `src/embodiment/physics3d/articulated_spec.py` | Target implementation binds root and joint state to body, episode, morphology revision, and an active owner-provided descriptor. Checkpoint v2 persists and fingerprints the complete declared morphology separately from the generated URDF description; restore is owner-bound and rejects stale or mismatched identity, revision, schema, units or morphology. |
+| Focused target contract checks | REWRITE | `tests/test_articulated_state.py`, `tests/test_articulated_spec.py` | Covers identity-based adoption under permuted collection order, invalid/missing/duplicate/out-of-range joint values, stale morphology, full-spec fingerprint/restore, descriptor-bound checkpoint restore, deterministic encoding, and continuation through a second causal step after value restore. |
 
 This is not a copied compatibility layer and does not preserve the legacy
 runtime's ordinal conventions. `ActiveArticulatedMorphology.from_spec()` must
 be called at the Embodiment owner boundary with the descriptor active for the
 body episode and morphology revision. The descriptor is not self-authenticating;
 the module does not prove that an arbitrary caller obtained it from that owner.
-The articulated checkpoint is a deterministic value encoding only: this slice
-does not provide durable storage, crash recovery, solver execution, Environment
-adoption, or World commit, and does not complete the end-to-end physical causal
-step milestone. The two-step test exercises value-level continuation in one
-process; it is not evidence of process restart or durable recovery. Articulated
-topology order remains constrained by the existing
+The articulated checkpoint schema v2 includes the complete declared
+`ArticulatedBodySpec`, its full-spec SHA-256, and a separate generated-URDF
+SHA-256. The full-spec digest covers fields omitted by URDF formatting (such as
+contact links, material, fixed-base status, spawn height and schema revision),
+and preserves numeric precision beyond the rendered URDF text. The morphology
+revision remains an explicit owner-supplied identity; the content digest does
+not authenticate a caller or independently select the active morphology. An
+Embodiment owner boundary constructs the active descriptor from its active
+specification and binds restore to that descriptor. Schema v1 is rejected;
+there is no compatibility fallback. The checkpoint is a deterministic value
+encoding only: this slice does not provide durable storage, crash recovery,
+solver execution, Environment adoption, or World commit, and does not complete
+the end-to-end physical causal step milestone. The two-step test exercises
+value-level continuation in one process; it is not evidence of process restart
+or durable recovery. Articulated topology order remains constrained by the existing
 `ArticulatedBodySpec`/URDF builder contract; candidate state correspondence is
 by stable joint ID, not collection position. The source monorepo remains
 unchanged.

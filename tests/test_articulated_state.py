@@ -129,6 +129,16 @@ def test_adopts_joint_values_by_stable_identity_not_collection_position() -> Non
     assert adopted.root.last_physical_step == step
 
 
+def test_active_morphology_holds_an_immutable_segment_snapshot() -> None:
+    morphology = _morphology()
+    digest = morphology.morphology_sha256
+
+    with pytest.raises(AttributeError):
+        morphology.spec.segments.clear()
+
+    assert morphology.morphology_sha256 == digest
+
+
 @pytest.mark.parametrize(
     "joints",
     [
@@ -183,9 +193,13 @@ def test_articulated_checkpoint_is_deterministic_and_restores_exact_state() -> N
     assert restored == state
     assert restored.checkpoint_bytes() == encoded
     payload = json.loads(encoded)
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
     assert payload["position_unit"] == "rad"
     assert payload["velocity_unit"] == "rad/s"
+    assert payload["active_morphology"]["spec"]["contact_link_names"] == ["body.root", "body.forearm"]
+    assert payload["active_morphology"]["morphology_sha256"] == state.morphology.morphology_sha256
+    assert state.durably_referenceable is False
+    assert state.checkpoint_digest == __import__("hashlib").sha256(encoded).hexdigest()
 
 
 def test_restored_articulated_state_can_continue_on_the_next_causal_step() -> None:
@@ -227,7 +241,31 @@ def test_restored_articulated_state_can_continue_on_the_next_causal_step() -> No
 def test_articulated_checkpoint_rejects_unknown_schema_and_implicit_units() -> None:
     state = _state()
     payload = json.loads(state.checkpoint_bytes())
-    payload["schema_version"] = 2
+    payload["schema_version"] = 1
+    with pytest.raises(ValueError, match="unsupported"):
+        ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(payload).encode(), active_morphology=state.morphology
+        )
+
+
+def test_checkpoint_binds_the_complete_body_specification() -> None:
+    state = _state()
+    payload = json.loads(state.checkpoint_bytes())
+    payload["active_morphology"]["spec"]["contact_link_names"] = ["body.root"]
+
+    with pytest.raises(ValueError, match="morphology binding"):
+        ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(payload).encode(), active_morphology=state.morphology
+        )
+
+
+def test_checkpoint_v1_is_rejected_without_compatibility_fallback() -> None:
+    state = _state()
+    payload = json.loads(state.checkpoint_bytes())
+    payload["schema_version"] = 1
+    payload["active_morphology"].pop("spec")
+    payload["active_morphology"].pop("morphology_sha256")
+
     with pytest.raises(ValueError, match="unsupported"):
         ArticulatedEmbodimentPhysicalState.restore_checkpoint(
             json.dumps(payload).encode(), active_morphology=state.morphology
