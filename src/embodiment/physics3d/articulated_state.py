@@ -311,7 +311,7 @@ class ArticulatedEmbodimentPhysicalState:
             root = EmbodimentPhysicalState.restore_checkpoint(
                 json.dumps(payload["root"], sort_keys=True, separators=(",", ":")).encode()
             )
-            return cls(
+            restored = cls(
                 root=root,
                 morphology=active_morphology,
                 joints=tuple(JointKinematicState(**item) for item in payload["joints"]),
@@ -319,6 +319,13 @@ class ArticulatedEmbodimentPhysicalState:
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("invalid articulated Embodiment checkpoint value") from exc
+        # The owner reference authenticates the exact bytes, while restoration
+        # verification compares a state re-encoded by this schema. Requiring
+        # canonical input here keeps those two checks consistent and prevents
+        # multiple byte encodings from representing the same checkpoint state.
+        if restored.checkpoint_bytes() != encoded:
+            raise ValueError("non-canonical articulated Embodiment checkpoint encoding")
+        return restored
 
     @classmethod
     def validate_checkpoint(

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, replace
+import hashlib
 import json
 
 import pytest
@@ -349,6 +350,27 @@ def test_owner_validation_and_restoration_verification_bind_checkpoint_reference
         expected_sha256=reference_digest,
         schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
     )
+
+
+def test_owner_validation_and_restore_reject_noncanonical_json_bytes() -> None:
+    state = _state()
+    canonical = state.checkpoint_bytes()
+    noncanonical = json.dumps(json.loads(canonical), indent=2).encode()
+
+    # Integrity is checked against the exact supplied reference, but a valid
+    # digest must not make alternate encodings acceptable to restore while
+    # verify_restoration requires the canonical checkpoint bytes.
+    noncanonical_digest = hashlib.sha256(noncanonical).hexdigest()
+    assert not ArticulatedEmbodimentPhysicalState.validate_checkpoint(
+        noncanonical,
+        active_morphology=state.morphology,
+        expected_sha256=noncanonical_digest,
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+    with pytest.raises(ValueError, match="non-canonical"):
+        ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+            noncanonical, active_morphology=state.morphology
+        )
 
 
 @pytest.mark.parametrize(
