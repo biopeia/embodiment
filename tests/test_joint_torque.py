@@ -1,4 +1,5 @@
 import json
+import math
 
 import pytest
 
@@ -127,7 +128,7 @@ def test_rejects_stale_revision_axis_and_unrecognized_joint():
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), 2.01, -2.01, True])
 def test_rejects_nonfinite_or_out_of_range_torque(value):
-    if isinstance(value, bool) or not __import__("math").isfinite(value):
+    if isinstance(value, bool) or not math.isfinite(value):
         with pytest.raises(ValueError):
             JointTorqueInputChannel("motor-left", value, "joint_torque", "N*m")
     else:
@@ -145,6 +146,21 @@ def test_rejects_misdeclared_physical_semantics(quantity, unit):
 def test_rejects_untyped_command_without_relabeling_values():
     with pytest.raises(ValueError, match="explicitly typed"):
         project_joint_torque_command(object(), binding(), morphology())  # type: ignore[arg-type]
+
+
+def test_rejects_duplicate_binding_identity_and_incomplete_joint_coverage():
+    with pytest.raises(ValueError, match="joint ids must be unique"):
+        EmbodimentJointTorqueBinding(
+            "binding-1", "body-1", "episode-1", "morph-1", "surface-1",
+            (JointTorqueChannelBinding("motor-left", "joint.left", (0, 1, 0)),
+             JointTorqueChannelBinding("motor-right", "joint.left", (0, 1, 0))),
+        )
+    incomplete = EmbodimentJointTorqueBinding(
+        "binding-1", "body-1", "episode-1", "morph-1", "surface-1",
+        (JointTorqueChannelBinding("motor-left", "joint.left", (0, 1, 0)),),
+    )
+    with pytest.raises(ValueError, match="cover every active joint"):
+        project_joint_torque_command(request(), incomplete, morphology())
 
 
 def test_rejects_stale_episode_and_surface():
