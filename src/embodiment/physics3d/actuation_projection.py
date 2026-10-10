@@ -12,6 +12,7 @@ import math
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
+from embodiment.physics3d.actuator_binding import EmbodimentActuatorBinding
 from embodiment.checkpoint import EmbodimentCheckpoint
 from embodiment.observation import BodyPoseSample
 
@@ -53,29 +54,6 @@ class MorphologyLike(Protocol):
     effectors: tuple[EffectorContractLike, ...]
 
 
-class ActuatorChannelLike(Protocol):
-    """An explicit actuator-to-effector association and command contract."""
-
-    actuator_id: str
-    effector_id: str
-    command_kind: str
-    quantity: str
-    unit: str
-    minimum: float
-    neutral: float
-    maximum: float
-    saturation: SaturationPolicy
-    available: bool
-
-
-class ActuatorSurfaceLike(Protocol):
-    """Surface bound to one exact active morphology revision."""
-
-    contract_fingerprint: str
-    morphology_revision: str
-    channels: tuple[ActuatorChannelLike, ...]
-
-
 @dataclass(frozen=True, slots=True)
 class PhysicalActuationCandidate:
     """Sparse commands addressed by stable, fully-contextual effector channels.
@@ -94,6 +72,8 @@ class PhysicalActuationCandidate:
     commitment_id: str
     controller_id: str
     competence_id: str | None
+    binding_id: str
+    binding_fingerprint: str
     surface_fingerprint: str
     issued_at_tick: int
     channels: tuple[PhysicalActuationChannel, ...]
@@ -119,7 +99,7 @@ class PhysicalActuationChannel:
 
 def project_motor_command(
     command: MotorCommandLike,
-    surface: ActuatorSurfaceLike,
+    binding: EmbodimentActuatorBinding,
     active_morphology: MorphologyLike,
     *,
     body_pose: BodyPoseSample,
@@ -128,7 +108,7 @@ def project_motor_command(
 ) -> PhysicalActuationCandidate:
     """Validate provenance/contracts and return sparse effector commands.
 
-    Surface channel entries bind opaque command actuator ids to stable
+    Binding entries associate opaque command actuator ids with stable
     morphology effector ids explicitly. Neither command nor output order has
     any mapping authority. Missing channels mean *no command*, not zero,
     neutral, hold, or another inferred physical action.
@@ -137,8 +117,10 @@ def project_motor_command(
     command_id = _required_text(command.command_id, "command_id")
     commitment_id = _required_text(command.commitment_id, "commitment_id")
     controller_id = _required_text(command.controller_id, "controller_id")
+    if not isinstance(binding, EmbodimentActuatorBinding):
+        raise ValueError("motor command projection requires an EmbodimentActuatorBinding")
     fingerprint = _required_text(command.surface_fingerprint, "surface_fingerprint")
-    if fingerprint != _required_text(surface.contract_fingerprint, "surface fingerprint"):
+    if fingerprint != binding.source_surface_fingerprint:
         raise ValueError("motor command targets a different actuator surface")
 
     body_id = _required_text(active_morphology.body_id, "active morphology body_id")
@@ -146,6 +128,12 @@ def project_motor_command(
         active_morphology.embodiment_episode_id, "active morphology embodiment_episode_id"
     )
     revision = _required_text(active_morphology.morphology_revision, "morphology_revision")
+    if binding.body_id != body_id:
+        raise ValueError("actuator binding targets a different body identity")
+    if binding.embodiment_episode_id != episode_id:
+        raise ValueError("actuator binding targets a different embodiment episode")
+    if binding.morphology_revision != revision:
+        raise ValueError("actuator binding targets a different morphology revision")
     if _required_text(body_pose.body_id, "pose body_id") != body_id:
         raise ValueError("physical pose body identity does not match active morphology")
     if _required_text(embodiment_checkpoint.body_id, "checkpoint body_id") != body_id:
@@ -154,8 +142,6 @@ def project_motor_command(
         raise ValueError("checkpoint episode identity does not match active morphology")
     if _required_text(command.embodiment_id, "command embodiment_id") != episode_id:
         raise ValueError("motor command targets a different embodiment episode")
-    if _required_text(surface.morphology_revision, "surface morphology_revision") != revision:
-        raise ValueError("actuator surface targets a different morphology revision")
     command_kind = _required_text(command_kind, "command_kind")
 
     issued_at_tick = command.issued_at_tick
@@ -163,7 +149,7 @@ def project_motor_command(
         raise ValueError("issued_at_tick must be a non-negative causal tick")
 
     morphology_effectors = tuple(active_morphology.effectors)
-    channels = tuple(surface.channels)
+    channels = binding.channels
     effectors_by_id = {}
     for effector in morphology_effectors:
         _validate_effector_contract(effector)
@@ -173,30 +159,30 @@ def project_motor_command(
         effectors_by_id[effector_id] = effector
 
     actuator_ids: set[str] = set()
-    surface_by_actuator = {}
+    binding_by_actuator = {}
     covered_effector_ids: set[str] = set()
     for channel in channels:
         actuator_id = _required_text(channel.actuator_id, "actuator_id")
-        effector_id = _required_text(channel.effector_id, "surface effector_id")
+        effector_id = _required_text(channel.effector_id, "binding effector_id")
         if actuator_id in actuator_ids:
-            raise ValueError("surface actuator ids must be unique")
+            raise ValueError("binding actuator ids must be unique")
         actuator_ids.add(actuator_id)
         if effector_id in covered_effector_ids:
-            raise ValueError("surface effector ids must be unique")
+            raise ValueError("binding effector ids must be unique")
         covered_effector_ids.add(effector_id)
         if effector_id not in effectors_by_id:
-            raise ValueError("surface references an effector outside the active morphology")
+            raise ValueError("binding references an effector outside the active morphology")
         if not isinstance(channel.available, bool):
             raise ValueError("actuator availability must be boolean")
         _validate_effector_contract(channel)
-        if _required_text(channel.command_kind, "surface command_kind") != command_kind:
-            raise ValueError("actuator surface command_kind does not match command")
+        if _required_text(channel.command_kind, "binding command_kind") != command_kind:
+            raise ValueError("actuator binding command_kind does not match command")
         active = effectors_by_id[effector_id]
         if _contract_tuple(channel) != _contract_tuple(active):
-            raise ValueError("surface effector contract differs from active morphology")
-        surface_by_actuator[actuator_id] = channel
+            raise ValueError("binding effector contract differs from active morphology")
+        binding_by_actuator[actuator_id] = channel
     if covered_effector_ids != set(effectors_by_id):
-        raise ValueError("actuator surface must explicitly cover every active morphology effector")
+        raise ValueError("actuator binding must explicitly cover every active morphology effector")
 
     values_by_effector: dict[str, float] = {}
     seen_actuators: set[str] = set()
@@ -205,9 +191,9 @@ def project_motor_command(
         if actuator_id in seen_actuators:
             raise ValueError("motor command channels must be unique")
         seen_actuators.add(actuator_id)
-        channel = surface_by_actuator.get(actuator_id)
+        channel = binding_by_actuator.get(actuator_id)
         if channel is None:
-            raise ValueError("motor command contains an actuator outside the current surface")
+            raise ValueError("motor command contains an actuator outside the current binding")
         if not channel.available:
             raise ValueError("motor command targets an unavailable actuator")
         if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
@@ -250,6 +236,8 @@ def project_motor_command(
         commitment_id=commitment_id,
         controller_id=controller_id,
         competence_id=competence_id,
+        binding_id=binding.binding_id,
+        binding_fingerprint=binding.fingerprint,
         surface_fingerprint=fingerprint,
         issued_at_tick=issued_at_tick,
         channels=physical_channels,
@@ -290,8 +278,6 @@ def _contract_tuple(contract: EffectorContractLike) -> tuple[object, ...]:
 
 
 __all__ = [
-    "ActuatorChannelLike",
-    "ActuatorSurfaceLike",
     "EffectorContractLike",
     "MorphologyLike",
     "MotorCommandLike",
