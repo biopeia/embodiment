@@ -22,8 +22,8 @@ from embodiment.physics3d.articulated_spec import (
 )
 from embodiment.physics3d.physical_transition import (
     EmbodimentPhysicalState,
-    PhysicalStepCorrelation,
     SolverBodyCandidate,
+    WorldPhysicalStepContext,
 )
 
 
@@ -202,15 +202,15 @@ class ArticulatedEmbodimentPhysicalState:
         self,
         candidate: SolverArticulatedCandidate,
         *,
-        expected_step: PhysicalStepCorrelation,
+        world_context: WorldPhysicalStepContext,
     ) -> ArticulatedEmbodimentPhysicalState:
-        """Validate all identity-bound channels, then return a new owner state."""
+        """Validate all identity-bound channels against World context."""
 
         candidate_joints = _unique_by_id(candidate.joints, "candidate joint")
         active_ids = {item.joint_id for item in self.morphology.joint_ranges}
         if set(candidate_joints) != active_ids:
             raise ValueError("solver joint identities do not match active morphology")
-        accepted_root = self.root.adopt_candidate(candidate.root, expected_step=expected_step)
+        accepted_root = self.root.adopt_candidate(candidate.root, world_context=world_context)
         return ArticulatedEmbodimentPhysicalState(
             root=accepted_root,
             morphology=self.morphology,

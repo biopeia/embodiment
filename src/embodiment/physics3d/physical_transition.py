@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
+from typing import Protocol
 from embodiment.observation import BodyPoseSample
 
 
@@ -39,6 +40,25 @@ class PhysicalStepCorrelation:
             object.__setattr__(self, name, value.strip())
         if isinstance(self.causal_tick, bool) or not isinstance(self.causal_tick, int) or self.causal_tick < 0:
             raise ValueError("causal_tick must be a non-negative integer")
+
+
+class WorldPhysicalStepContext(Protocol):
+    """Structural view of the World-issued context required for adoption.
+
+    Embodiment intentionally does not depend on the World package. Callers
+    must pass the context received from the World coordinator; this protocol
+    is a typing boundary, not authentication of an arbitrary Python object.
+    """
+
+    world_id: str
+    source_causal_tick: int
+    target_causal_tick: int
+    physical_step_id: str
+    body_id: str
+    embodiment_episode_id: str
+    morphology_revision: str
+    environment_revision: str
+    solver_config_revision: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,17 +294,23 @@ class EmbodimentPhysicalState:
         self,
         candidate: SolverBodyCandidate,
         *,
-        expected_step: PhysicalStepCorrelation,
+        world_context: WorldPhysicalStepContext,
     ) -> EmbodimentPhysicalState:
-        """Validate and adopt a next-tick pose, returning a new owner state.
+        """Validate a World-correlated candidate and return staged owner state.
 
         Rejection leaves this immutable state untouched. A candidate is valid
         only for the exact active identities/revisions and current causal tick.
+        ``world_context`` must come from the active World coordinator call path;
+        structural typing does not authenticate fabricated context values.
+        This pure value transition does not publish a commit or enforce global
+        single-use; World selects the checkpoint reference that becomes
+        authoritative when it commits the causal cut.
         """
 
+        expected_step = _correlation_from_world_context(world_context)
         c = candidate.correlation
         if c != expected_step:
-            raise ValueError("solver candidate does not match the authorized physical step")
+            raise ValueError("solver candidate does not match the World physical-step context")
         expected = (
             self.world_id,
             self.causal_tick,
@@ -324,6 +350,30 @@ class EmbodimentPhysicalState:
         )
 
 
+def _correlation_from_world_context(
+    context: WorldPhysicalStepContext,
+) -> PhysicalStepCorrelation:
+    """Validate and project the shared World context into Embodiment's value."""
+
+    names = (
+        "world_id", "physical_step_id", "body_id", "embodiment_episode_id",
+        "morphology_revision", "environment_revision", "solver_config_revision",
+    )
+    try:
+        values = {name: getattr(context, name) for name in names}
+        source_tick = context.source_causal_tick
+        target_tick = context.target_causal_tick
+    except AttributeError as exc:
+        raise ValueError("World physical-step context is incomplete") from exc
+    if any(type(value) is not str or not value.strip() for value in values.values()):
+        raise ValueError("World physical-step context identities and revisions must be non-empty")
+    if type(source_tick) is not int or type(target_tick) is not int:
+        raise ValueError("World physical-step context ticks must be integers")
+    if source_tick < 0 or target_tick != source_tick + 1:
+        raise ValueError("World physical-step target tick must immediately follow its source tick")
+    return PhysicalStepCorrelation(causal_tick=source_tick, **values)
+
+
 def _validate_vector(value: object, name: str) -> None:
     if not isinstance(value, tuple) or len(value) != 3:
         raise ValueError(f"{name} must be a 3-vector in its declared frame")
@@ -333,4 +383,9 @@ def _validate_vector(value: object, name: str) -> None:
         raise ValueError(f"{name} components must be finite")
 
 
-__all__ = ["EmbodimentPhysicalState", "PhysicalStepCorrelation", "SolverBodyCandidate"]
+__all__ = [
+    "EmbodimentPhysicalState",
+    "PhysicalStepCorrelation",
+    "SolverBodyCandidate",
+    "WorldPhysicalStepContext",
+]

@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 
 import pytest
@@ -24,6 +24,23 @@ def _correlation(**changes: object) -> PhysicalStepCorrelation:
     }
     values.update(changes)
     return PhysicalStepCorrelation(**values)  # type: ignore[arg-type]
+
+
+@dataclass(frozen=True)
+class _WorldContext:
+    world_id: str = "world.1"
+    source_causal_tick: int = 4
+    target_causal_tick: int = 5
+    physical_step_id: str = "step.5"
+    body_id: str = "body.1"
+    embodiment_episode_id: str = "episode.2"
+    morphology_revision: str = "morph.3"
+    environment_revision: str = "environment.6"
+    solver_config_revision: str = "solver.7"
+
+
+def _world_context(**changes: object) -> _WorldContext:
+    return replace(_WorldContext(), **changes)
 
 
 def _state() -> EmbodimentPhysicalState:
@@ -62,7 +79,7 @@ def _candidate(correlation: PhysicalStepCorrelation) -> SolverBodyCandidate:
 def test_adoption_requires_exact_authorized_step_and_returns_new_owner_state() -> None:
     state = _state()
     authorized = _correlation()
-    adopted = state.adopt_candidate(_candidate(authorized), expected_step=authorized)
+    adopted = state.adopt_candidate(_candidate(authorized), world_context=_world_context())
 
     assert adopted is not state
     assert adopted.state_owner == "EMBODIMENT_OWNED"
@@ -91,7 +108,7 @@ def test_rejects_stale_or_wrong_correlation_without_mutating_owner_state(change:
     authorized = _correlation()
     before = state
     with pytest.raises(ValueError):
-        state.adopt_candidate(_candidate(replace(authorized, **change)), expected_step=authorized)
+        state.adopt_candidate(_candidate(replace(authorized, **change)), world_context=_world_context())
     assert state is before
     assert state.causal_tick == 4
     assert state.pose.position_m == (0.0, 0.0, 1.0)
@@ -100,10 +117,44 @@ def test_rejects_stale_or_wrong_correlation_without_mutating_owner_state(change:
 def test_current_candidate_cannot_be_adopted_under_another_authorized_step() -> None:
     state = _state()
     candidate_correlation = _correlation()
-    wrong_authorization = _correlation(solver_config_revision="solver.new")
-    with pytest.raises(ValueError, match="authorized physical step"):
-        state.adopt_candidate(_candidate(candidate_correlation), expected_step=wrong_authorization)
+    wrong_authorization = _world_context(solver_config_revision="solver.new")
+    with pytest.raises(ValueError, match="World physical-step context"):
+        state.adopt_candidate(_candidate(candidate_correlation), world_context=wrong_authorization)
     assert state.causal_tick == 4
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"target_causal_tick": 6},
+        {"source_causal_tick": -1, "target_causal_tick": 0},
+        {"target_causal_tick": True},
+        {"environment_revision": " "},
+    ],
+)
+def test_rejects_invalid_world_context(changes: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="World physical-step"):
+        _state().adopt_candidate(
+            _candidate(_correlation()), world_context=_world_context(**changes)
+        )
+
+
+def test_adoption_stages_values_and_world_commit_selects_authoritative_result() -> None:
+    state = _state()
+    context = _world_context()
+    first_candidate = _candidate(_correlation())
+    second_candidate = replace(first_candidate, position_m=(0.0, 0.0, 0.8))
+
+    first = state.adopt_candidate(first_candidate, world_context=context)
+    second = state.adopt_candidate(second_candidate, world_context=context)
+
+    # Embodiment returns staged immutable values; only World commit selects
+    # which owner checkpoint reference is authoritative. Neither call mutates
+    # the source state or claims a commit.
+    assert first.pose.position_m != second.pose.position_m
+    assert first.causal_tick == second.causal_tick == 5
+    assert state.causal_tick == 4
+    assert state.last_physical_step is None
 
 
 def test_adopted_state_explicitly_has_no_durable_checkpoint_reference() -> None:
@@ -116,7 +167,7 @@ def test_adopted_state_explicitly_has_no_durable_checkpoint_reference() -> None:
 def test_checkpoint_bytes_are_deterministic_and_restore_exact_adopted_state() -> None:
     initial = _state()
     step = _correlation()
-    adopted = initial.adopt_candidate(_candidate(step), expected_step=step)
+    adopted = initial.adopt_candidate(_candidate(step), world_context=_world_context())
 
     encoded = adopted.checkpoint_bytes()
     restored = EmbodimentPhysicalState.restore_checkpoint(encoded)
@@ -175,7 +226,7 @@ def test_owner_state_rejects_invalid_root_velocity_vectors(field: str, value: tu
 def test_owner_state_rejects_last_step_with_mismatched_identity_or_revision() -> None:
     state = _state()
     step = _correlation()
-    adopted = state.adopt_candidate(_candidate(step), expected_step=step)
+    adopted = state.adopt_candidate(_candidate(step), world_context=_world_context())
 
     with pytest.raises(ValueError, match="identity/revision"):
         replace(adopted, last_physical_step=replace(step, morphology_revision="morph.stale"))
@@ -186,7 +237,7 @@ def test_owner_state_rejects_last_step_with_mismatched_identity_or_revision() ->
 def test_checkpoint_restore_rejects_inconsistent_last_step_and_nonfinite_pose_sample() -> None:
     initial = _state()
     step = _correlation()
-    adopted = initial.adopt_candidate(_candidate(step), expected_step=step)
+    adopted = initial.adopt_candidate(_candidate(step), world_context=_world_context())
 
     inconsistent = json.loads(adopted.checkpoint_bytes())
     inconsistent["last_physical_step"]["morphology_revision"] = "morph.stale"

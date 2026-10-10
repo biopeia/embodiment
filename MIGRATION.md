@@ -496,3 +496,41 @@ checkpoint policy, correlate this envelope to a World causal cut, prove
 crash/power-loss durability, or make a scientific-equivalence claim. World and
 Lab consumers must move to the v2 owner schema explicitly before using the new
 format; no compatibility fallback is provided.
+
+### Target contract correction: World-context-bound candidate adoption
+
+**Disposition: REWRITE the existing Biopeia owner adoption boundary.** This is
+a target-side correction for Embodiment issue
+[#25](https://github.com/biopeia/embodiment/issues/25), not a migration of
+legacy behavior. The bounded implementation base is Embodiment
+`6114f3d9bcc0d5c44ecbfb6262f87f5824f92903`. Issue evidence was recorded at
+Embodiment `a5129f0`; no source-monorepo code is copied or changed by this
+correction.
+
+Root and articulated adoption now consume a structural `WorldPhysicalStepContext`
+view with World ID, source and target causal ticks, physical-step ID, body and
+embodiment episode identities, morphology revision, Environment revision,
+and solver configuration revision. Embodiment derives its local correlation
+from that context, requires the target tick to immediately follow the source
+tick, and validates the candidate against both the context and active owner
+state. The API no longer accepts a separately caller-selected expected
+correlation; there is no compatibility overload. Embodiment has no runtime
+dependency on the World package.
+
+The context protocol is a structural typing boundary, **not authentication**.
+The adapter must pass the context received through the active World
+coordinator call path. Adoption returns a staged immutable owner value; it
+does not enforce global single-use, publish a causal result, or claim a
+durable checkpoint. World selects the owner reference made authoritative by
+its committed causal cut. This change does not claim malicious-adapter
+resistance, rollback, complete physical runtime, solver execution, or durable
+recovery.
+
+Target-authored tests in `tests/test_physical_transition.py` and
+`tests/test_articulated_state.py` cover valid context binding, exact identity
+and revision matching, invalid tick/revision rejection, stable joint
+identity under collection permutation, staged-value semantics, and checkpoint
+round-trip. Validation on this patch: `uv run pytest -q` (136 passed),
+`uv build --no-sources`, and `git diff --check` passed. World cross-repository integration callers must be updated to pass
+the World-issued context and repin Embodiment in a separate World-owned slice;
+that follow-up is not included in this Embodiment change.
