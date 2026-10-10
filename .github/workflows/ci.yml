@@ -17,6 +17,7 @@ jobs:
       - run: python -m pytest
 
   build-and-test-distributions:
+    name: Build and test distributions
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
