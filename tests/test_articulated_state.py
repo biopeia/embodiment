@@ -428,6 +428,24 @@ def test_owner_validation_rejects_malformed_wrong_schema_and_tampered_bytes() ->
     )
 
 
+def test_owner_validation_rejects_integer_overflow_in_checkpoint_numeric_fields() -> None:
+    state = _state()
+    payload = json.loads(state.checkpoint_bytes())
+    payload["joints"][0]["position_rad"] = 10**400
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+
+    assert not ArticulatedEmbodimentPhysicalState.validate_checkpoint(
+        encoded,
+        active_morphology=state.morphology,
+        expected_sha256=hashlib.sha256(encoded).hexdigest(),
+        schema_version=ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA,
+    )
+    with pytest.raises(ValueError, match="invalid articulated Embodiment checkpoint value"):
+        ArticulatedEmbodimentPhysicalState.restore_checkpoint(
+            encoded, active_morphology=state.morphology
+        )
+
+
 def test_restoration_verification_rejects_state_from_another_checkpoint_without_mutation() -> None:
     state = _state()
     encoded = state.checkpoint_bytes()

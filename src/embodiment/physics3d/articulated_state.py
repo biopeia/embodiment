@@ -411,7 +411,13 @@ def _identity(value: object, name: str) -> str:
 
 
 def _finite(value: object, name: str) -> None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite number")
+    try:
+        finite = math.isfinite(float(value))
+    except OverflowError as exc:
+        raise ValueError(f"{name} must be a finite number") from exc
+    if not finite:
         raise ValueError(f"{name} must be a finite number")
 
 
