@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 
 import pytest
@@ -32,6 +32,35 @@ def _correlation(**changes: object) -> PhysicalStepCorrelation:
     }
     values.update(changes)
     return PhysicalStepCorrelation(**values)  # type: ignore[arg-type]
+
+
+@dataclass(frozen=True)
+class _WorldContext:
+    world_id: str = "world.1"
+    source_causal_tick: int = 4
+    target_causal_tick: int = 5
+    physical_step_id: str = "step.5"
+    body_id: str = "body.1"
+    embodiment_episode_id: str = "episode.2"
+    morphology_revision: str = "morph.3"
+    environment_revision: str = "environment.6"
+    solver_config_revision: str = "solver.7"
+
+
+def _world_context(step: PhysicalStepCorrelation | None = None) -> _WorldContext:
+    if step is None:
+        return _WorldContext()
+    return _WorldContext(
+        world_id=step.world_id,
+        source_causal_tick=step.causal_tick,
+        target_causal_tick=step.causal_tick + 1,
+        physical_step_id=step.physical_step_id,
+        body_id=step.body_id,
+        embodiment_episode_id=step.embodiment_episode_id,
+        morphology_revision=step.morphology_revision,
+        environment_revision=step.environment_revision,
+        solver_config_revision=step.solver_config_revision,
+    )
 
 
 def _root() -> EmbodimentPhysicalState:
@@ -114,14 +143,14 @@ def _candidate(joints: tuple[JointKinematicState, ...] | None = None) -> SolverA
 def test_adopts_joint_values_by_stable_identity_not_collection_position() -> None:
     state = _state()
     step = _correlation()
-    adopted = state.adopt_candidate(_candidate(), expected_step=step)
+    adopted = state.adopt_candidate(_candidate(), world_context=_world_context(step))
 
     assert [(item.joint_id, item.position_rad) for item in adopted.joints] == [
         ("joint.elbow", 0.4),
         ("joint.hip", -0.3),
     ]
     permuted = state.adopt_candidate(
-        _candidate(tuple(reversed(_candidate().joints))), expected_step=step
+        _candidate(tuple(reversed(_candidate().joints))), world_context=_world_context(step)
     )
     assert permuted == adopted
     assert state.causal_tick == 4
@@ -165,7 +194,7 @@ def test_rejects_incomplete_duplicate_unknown_or_out_of_range_joint_results(join
     state = _state()
     original_root = state.root
     with pytest.raises(ValueError):
-        state.adopt_candidate(_candidate(joints), expected_step=_correlation())
+        state.adopt_candidate(_candidate(joints), world_context=_world_context())
     assert state.root is original_root
     assert state.causal_tick == 4
 
@@ -174,18 +203,18 @@ def test_rejects_stale_morphology_even_when_joint_names_match() -> None:
     state = _state()
     stale = replace(_correlation(), morphology_revision="morph.old")
     candidate = _candidate()
-    with pytest.raises(ValueError, match="authorized physical step"):
+    with pytest.raises(ValueError, match="World physical-step context"):
         state.adopt_candidate(
             SolverArticulatedCandidate(
                 replace(candidate.root, correlation=stale), candidate.joints
             ),
-            expected_step=_correlation(),
+            world_context=_world_context(),
         )
     assert state.causal_tick == 4
 
 
 def test_articulated_checkpoint_is_deterministic_and_restores_exact_state() -> None:
-    state = _state().adopt_candidate(_candidate(), expected_step=_correlation())
+    state = _state().adopt_candidate(_candidate(), world_context=_world_context())
     encoded = state.checkpoint_bytes()
     restored = ArticulatedEmbodimentPhysicalState.restore_checkpoint(
         encoded, active_morphology=state.morphology
@@ -203,7 +232,7 @@ def test_articulated_checkpoint_is_deterministic_and_restores_exact_state() -> N
 
 
 def test_restored_articulated_state_can_continue_on_the_next_causal_step() -> None:
-    first = _state().adopt_candidate(_candidate(), expected_step=_correlation())
+    first = _state().adopt_candidate(_candidate(), world_context=_world_context())
     resumed = ArticulatedEmbodimentPhysicalState.restore_checkpoint(
         first.checkpoint_bytes(), active_morphology=first.morphology
     )
@@ -224,7 +253,7 @@ def test_restored_articulated_state_can_continue_on_the_next_causal_step() -> No
         ),
     )
 
-    second = resumed.adopt_candidate(second_candidate, expected_step=second_step)
+    second = resumed.adopt_candidate(second_candidate, world_context=_world_context(second_step))
 
     assert first.causal_tick == 5
     assert second.causal_tick == 6
