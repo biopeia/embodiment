@@ -560,3 +560,28 @@ and non-finite location rejection. This slice assigns no meaning to the
 sampled scalar and does not implement Environment field sampling, Modality
 transduction, Organism intake, causal commit, sensorimotor learning, or a
 complete physical loop.
+
+### Target physical actuator fixture: revision-bound joint torque
+
+Embodiment issue [#47](https://github.com/biopeia/embodiment/issues/47)
+authorizes a target-authored joint torque command projection in
+`src/embodiment/physics3d/joint_torque.py`. The binding correlates each opaque
+actuator ID with a stable morphology joint name (`joint_id`), declared axis,
+body ID, embodiment episode and morphology revision. Collection position and
+solver-native IDs are not used as authority.
+
+The input is a typed request: every channel explicitly declares
+`joint_torque` in `N*m`; untyped numeric channels cannot be relabelled as
+torque. The output range is derived from the active morphology's declared
+maximum motor torque and its neutral value is zero. A joint name is the stable
+joint identity within the bound morphology revision. The declared axis is in
+the joint frame, whose identity is scoped to that joint and morphology
+revision; parent/child link identities are included to make the topology
+context explicit. Positive torque follows the right-hand convention about
+that axis. A missing input channel produces no command. Non-finite and
+out-of-range input is rejected; there is no clipping. The strict binding
+checkpoint is versioned and rejects unknown fields.
+
+This candidate projection does not execute a solver, prove delivered torque,
+adopt authoritative body state, or commit World state. It is a new TARGET
+contract, not a legacy API alias or compatibility bridge.
