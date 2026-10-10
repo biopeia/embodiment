@@ -534,3 +534,29 @@ round-trip. Validation on this patch: `uv run pytest -q` (136 passed),
 `uv build --no-sources`, and `git diff --check` passed. World cross-repository integration callers must be updated to pass
 the World-issued context and repin Embodiment in a separate World-owned slice;
 that follow-up is not included in this Embodiment change.
+
+
+### Target sensor fixture: stable Embodiment receptor attachment
+
+Embodiment issue [#43](https://github.com/biopeia/embodiment/issues/43),
+parent [Modality #13](https://github.com/biopeia/modality/issues/13), adds a
+fresh target-authored receptor descriptor and source-cut sample-point
+projection. The implementation is based on Embodiment main
+`e53f4a07f52cf6afb7f08788dc81923ec98b3c24`; no historical sensor code is an
+input (`DROP` as target code; no compatibility adapter).
+
+`EmbodimentReceptor` binds a stable `receptor_id` to `body_id`,
+`embodiment_episode_id`, `morphology_revision`, an explicit body frame, and a
+finite metre offset. Projection validates the active Embodiment owner state
+against the World physical step's source causal cut, rotates the local offset
+using the owner pose, and emits a sample point in that pose's declared
+reference frame. Receptor collection order has no authority; duplicate IDs
+are rejected. The structural World-context view checks correlation but is not
+authentication or proof of World authorization.
+
+Target tests cover stable identity under permutation, frame and source-cut
+projection, quaternion rotation, stale/mismatched body binding, duplicate IDs,
+and non-finite location rejection. This slice assigns no meaning to the
+sampled scalar and does not implement Environment field sampling, Modality
+transduction, Organism intake, causal commit, sensorimotor learning, or a
+complete physical loop.
