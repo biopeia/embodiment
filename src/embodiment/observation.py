@@ -6,6 +6,7 @@ They are not wire records and do not authorize publication by themselves.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from math import isfinite
 
@@ -127,7 +128,9 @@ class BodyPoseObservationProjection:
 
     This value is produced from adopted Embodiment state. It is not a World
     commit receipt and does not authorize publication; World must independently
-    correlate it to a committed causal cut.
+    correlate it to a committed causal cut. The owner-state projection method
+    supplies a matching source-state digest; direct construction validates its
+    shape, not cryptographic correspondence to omitted checkpoint bytes.
     """
 
     world_id: str
@@ -135,6 +138,7 @@ class BodyPoseObservationProjection:
     body_id: str
     embodiment_episode_id: str
     morphology_revision: str
+    source_state_sha256: str
     pose: BodyPoseSample
     last_physical_step_id: str | None = None
     last_physical_step_source_tick: int | None = None
@@ -148,11 +152,14 @@ class BodyPoseObservationProjection:
             "body_id",
             "embodiment_episode_id",
             "morphology_revision",
+            "source_state_sha256",
         ):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} must be a non-empty string")
             object.__setattr__(self, name, value.strip())
+        if not re.fullmatch(r"[0-9a-f]{64}", self.source_state_sha256):
+            raise ValueError("source_state_sha256 must be a lowercase SHA-256 digest")
         if (
             isinstance(self.causal_tick, bool)
             or not isinstance(self.causal_tick, int)

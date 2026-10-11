@@ -82,6 +82,7 @@ def test_owner_projection_preserves_adopted_identity_revision_and_step_correlati
         body_id="body.1",
         embodiment_episode_id="episode.2",
         morphology_revision="morph.3",
+        source_state_sha256=adopted.checkpoint_digest,
         pose=adopted.pose,
         last_physical_step_id="step.5",
         last_physical_step_source_tick=4,
@@ -100,6 +101,7 @@ def test_projection_rejects_pose_with_another_body_identity() -> None:
             body_id="body.other",
             embodiment_episode_id=adopted.embodiment_episode_id,
             morphology_revision=adopted.morphology_revision,
+            source_state_sha256=adopted.checkpoint_digest,
             pose=adopted.pose,
         )
 
@@ -173,5 +175,6 @@ def test_projection_rejects_physics_step_pose_without_retained_correlation() -> 
             body_id="body.1",
             embodiment_episode_id="episode.2",
             morphology_revision="morph.3",
+            source_state_sha256=_state().checkpoint_digest,
             pose=pose,
         )
