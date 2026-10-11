@@ -8,38 +8,17 @@ external storage is required before those bytes are durably referenceable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import math
+from dataclasses import dataclass
 from typing import Protocol
-from embodiment.observation import BodyPoseSample
 
-
-@dataclass(frozen=True, slots=True)
-class PhysicalStepCorrelation:
-    """Identity and revisions for one physical execution, never a solver API."""
-
-    world_id: str
-    causal_tick: int
-    physical_step_id: str
-    body_id: str
-    embodiment_episode_id: str
-    morphology_revision: str
-    environment_revision: str
-    solver_config_revision: str
-
-    def __post_init__(self) -> None:
-        for name in (
-            "world_id", "physical_step_id", "body_id", "embodiment_episode_id",
-            "morphology_revision", "environment_revision", "solver_config_revision",
-        ):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{name} must be a non-empty string")
-            object.__setattr__(self, name, value.strip())
-        if isinstance(self.causal_tick, bool) or not isinstance(self.causal_tick, int) or self.causal_tick < 0:
-            raise ValueError("causal_tick must be a non-negative integer")
+from embodiment.observation import (
+    BodyPoseObservationProjection,
+    BodyPoseSample,
+    PhysicalStepCorrelation,
+)
 
 
 class WorldPhysicalStepContext(Protocol):
@@ -127,6 +106,13 @@ class EmbodimentPhysicalState:
             raise ValueError("pose sample_value must be a string or number")
         if isinstance(sample_value, (int, float)) and not math.isfinite(float(sample_value)):
             raise ValueError("pose numeric sample_value must be finite")
+        if (
+            self.last_physical_step is None
+            and self.pose.sample_kind == "physics_step"
+        ):
+            raise ValueError(
+                "physics-step pose sample requires a physical-step correlation"
+            )
         if self.last_physical_step is not None:
             step = self.last_physical_step
             if not isinstance(step, PhysicalStepCorrelation):
@@ -147,6 +133,28 @@ class EmbodimentPhysicalState:
     def durably_referenceable(self) -> bool:
         """Whether this in-memory value itself has a durable store reference."""
         return False
+
+    def body_pose_observation_projection(self) -> BodyPoseObservationProjection:
+        """Return a passive projection of this adopted owner state.
+
+        The result is not a World commit receipt and must not be published as
+        committed without independent World-side verification.
+        """
+
+        step = self.last_physical_step
+        return BodyPoseObservationProjection(
+            world_id=self.world_id,
+            causal_tick=self.causal_tick,
+            body_id=self.body_id,
+            embodiment_episode_id=self.embodiment_episode_id,
+            morphology_revision=self.morphology_revision,
+            pose=self.pose,
+            last_physical_step_id=None if step is None else step.physical_step_id,
+            last_physical_step_source_tick=None if step is None else step.causal_tick,
+            environment_revision=None if step is None else step.environment_revision,
+            solver_config_revision=None if step is None else step.solver_config_revision,
+            physical_step_correlation=step,
+        )
 
     def checkpoint_bytes(self) -> bytes:
         """Encode this owner state deterministically for an external checkpoint store.
@@ -384,6 +392,7 @@ def _validate_vector(value: object, name: str) -> None:
 
 
 __all__ = [
+    "BodyPoseObservationProjection",
     "EmbodimentPhysicalState",
     "PhysicalStepCorrelation",
     "SolverBodyCandidate",

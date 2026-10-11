@@ -234,6 +234,14 @@ def test_owner_state_rejects_last_step_with_mismatched_identity_or_revision() ->
         replace(adopted, last_physical_step=replace(step, body_id="body.other"))
 
 
+def test_owner_state_rejects_physics_step_pose_without_retained_correlation() -> None:
+    with pytest.raises(ValueError, match="requires a physical-step correlation"):
+        replace(
+            _state(),
+            pose=replace(_state().pose, sample_kind="physics_step", sample_value="step.5"),
+        )
+
+
 def test_checkpoint_restore_rejects_inconsistent_last_step_and_nonfinite_pose_sample() -> None:
     initial = _state()
     step = _correlation()
@@ -248,6 +256,14 @@ def test_checkpoint_restore_rejects_inconsistent_last_step_and_nonfinite_pose_sa
 
     with pytest.raises(ValueError, match="pose numeric sample_value must be finite"):
         replace(initial, pose=replace(initial.pose, sample_value=float("nan")))
+
+    missing_step = json.loads(initial.checkpoint_bytes())
+    missing_step["pose"]["sample_kind"] = "physics_step"
+    missing_step["pose"]["sample_value"] = "step.5"
+    with pytest.raises(ValueError, match="invalid Embodiment physical checkpoint value"):
+        EmbodimentPhysicalState.restore_checkpoint(
+            json.dumps(missing_step, sort_keys=True, separators=(",", ":")).encode()
+        )
 
     nonfinite_sample = json.loads(initial.checkpoint_bytes())
     nonfinite_sample["pose"]["sample_value"] = float("inf")
