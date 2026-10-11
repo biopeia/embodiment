@@ -157,3 +157,21 @@ def test_initial_owner_state_projection_has_no_fabricated_step_correlation() -> 
     assert projection.environment_revision is None
     assert projection.solver_config_revision is None
     assert projection.physical_step_correlation is None
+
+
+def test_projection_rejects_physics_step_pose_without_retained_correlation() -> None:
+    pose = replace(
+        _state().pose,
+        sample_kind="physics_step",
+        sample_value="step.5",
+    )
+
+    with pytest.raises(ValueError, match="requires a physical-step correlation"):
+        BodyPoseObservationProjection(
+            world_id="world.1",
+            causal_tick=5,
+            body_id="body.1",
+            embodiment_episode_id="episode.2",
+            morphology_revision="morph.3",
+            pose=pose,
+        )

@@ -171,6 +171,10 @@ class BodyPoseObservationProjection:
             self.solver_config_revision,
         )
         if all(value is None for value in step_values):
+            if self.pose.sample_kind == "physics_step":
+                raise ValueError(
+                    "physics-step pose sample requires a physical-step correlation"
+                )
             if self.physical_step_correlation is not None:
                 raise ValueError("initial projection cannot carry a physical-step correlation")
             return

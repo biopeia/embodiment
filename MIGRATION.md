@@ -595,7 +595,11 @@ Embodiment issue [#52](https://github.com/biopeia/embodiment/issues/52) adds
 `morphology_revision`. When a physical step exists, it carries the complete
 last-step identity/revision correlation and validates the source tick and pose
 sample identity. It rejects mismatched body identity and incomplete or stale
-step correlation.
+step correlation. A pose labeled `physics_step` is invalid unless its owner
+state retains the matching physical-step correlation; construction, projection,
+and checkpoint restoration all fail closed on that missing provenance. An
+initial pose with no physical-step correlation remains valid when it is not
+represented as a physics-step sample.
 
 The implementation is based on Embodiment `main`
 `b5714f985d0aa970d3a412a7d29e43fa0bcb89d6`. Existing

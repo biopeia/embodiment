@@ -106,6 +106,13 @@ class EmbodimentPhysicalState:
             raise ValueError("pose sample_value must be a string or number")
         if isinstance(sample_value, (int, float)) and not math.isfinite(float(sample_value)):
             raise ValueError("pose numeric sample_value must be finite")
+        if (
+            self.last_physical_step is None
+            and self.pose.sample_kind == "physics_step"
+        ):
+            raise ValueError(
+                "physics-step pose sample requires a physical-step correlation"
+            )
         if self.last_physical_step is not None:
             step = self.last_physical_step
             if not isinstance(step, PhysicalStepCorrelation):
