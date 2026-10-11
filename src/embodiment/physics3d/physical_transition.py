@@ -148,6 +148,7 @@ class EmbodimentPhysicalState:
             body_id=self.body_id,
             embodiment_episode_id=self.embodiment_episode_id,
             morphology_revision=self.morphology_revision,
+            source_state_sha256=self.checkpoint_digest,
             pose=self.pose,
             last_physical_step_id=None if step is None else step.physical_step_id,
             last_physical_step_source_tick=None if step is None else step.causal_tick,
