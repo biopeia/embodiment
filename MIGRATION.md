@@ -585,3 +585,24 @@ checkpoint is versioned and rejects unknown fields.
 This candidate projection does not execute a solver, prove delivered torque,
 adopt authoritative body state, or commit World state. It is a new TARGET
 contract, not a legacy API alias or compatibility bridge.
+
+### Target identity-bound BodyPose observation projection
+
+Embodiment issue [#52](https://github.com/biopeia/embodiment/issues/52) adds
+`BodyPoseObservationProjection`, a fresh owner-derived value from the adopted
+`EmbodimentPhysicalState`. It combines the existing `BodyPoseSample` with
+`world_id`, adopted `causal_tick`, `body_id`, `embodiment_episode_id`, and
+`morphology_revision`. When a physical step exists, it carries the complete
+last-step identity/revision correlation and validates the source tick and pose
+sample identity. It rejects mismatched body identity and incomplete or stale
+step correlation.
+
+The implementation is based on Embodiment `main`
+`b5714f985d0aa970d3a412a7d29e43fa0bcb89d6`. Existing
+`BodyPoseSample` and `EmbodimentPhysicalState` are reused as TARGET inputs; the
+projection and owner factory are new TARGET code, not a historical copy. The
+projection stays independent of Observation and does not claim that World
+committed the state. World must independently verify the commit before an
+Observation publication path exposes it. This slice adds no wire format,
+transport, semantic interpretation, or compatibility behavior, and does not
+complete the end-to-end migration acceptance cycle.

@@ -13,7 +13,7 @@ import hashlib
 import json
 import math
 from typing import Protocol
-from embodiment.observation import BodyPoseSample
+from embodiment.observation import BodyPoseObservationProjection, BodyPoseSample
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +147,27 @@ class EmbodimentPhysicalState:
     def durably_referenceable(self) -> bool:
         """Whether this in-memory value itself has a durable store reference."""
         return False
+
+    def body_pose_observation_projection(self) -> BodyPoseObservationProjection:
+        """Return a passive projection of this adopted owner state.
+
+        The result is not a World commit receipt and must not be published as
+        committed without independent World-side verification.
+        """
+
+        step = self.last_physical_step
+        return BodyPoseObservationProjection(
+            world_id=self.world_id,
+            causal_tick=self.causal_tick,
+            body_id=self.body_id,
+            embodiment_episode_id=self.embodiment_episode_id,
+            morphology_revision=self.morphology_revision,
+            pose=self.pose,
+            last_physical_step_id=None if step is None else step.physical_step_id,
+            last_physical_step_source_tick=None if step is None else step.causal_tick,
+            environment_revision=None if step is None else step.environment_revision,
+            solver_config_revision=None if step is None else step.solver_config_revision,
+        )
 
     def checkpoint_bytes(self) -> bytes:
         """Encode this owner state deterministically for an external checkpoint store.
@@ -384,6 +405,7 @@ def _validate_vector(value: object, name: str) -> None:
 
 
 __all__ = [
+    "BodyPoseObservationProjection",
     "EmbodimentPhysicalState",
     "PhysicalStepCorrelation",
     "SolverBodyCandidate",
