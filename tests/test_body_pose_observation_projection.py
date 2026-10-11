@@ -2,10 +2,13 @@ from dataclasses import replace
 
 import pytest
 
-from embodiment.observation import BodyPoseObservationProjection, BodyPoseSample
+from embodiment.observation import (
+    BodyPoseObservationProjection,
+    BodyPoseSample,
+    PhysicalStepCorrelation,
+)
 from embodiment.physics3d.physical_transition import (
     EmbodimentPhysicalState,
-    PhysicalStepCorrelation,
     SolverBodyCandidate,
 )
 
@@ -84,6 +87,7 @@ def test_owner_projection_preserves_adopted_identity_revision_and_step_correlati
         last_physical_step_source_tick=4,
         environment_revision="environment.6",
         solver_config_revision="solver.7",
+        physical_step_correlation=adopted.last_physical_step,
     )
 
 
@@ -125,6 +129,25 @@ def test_projection_rejects_step_id_that_does_not_match_pose_sample() -> None:
         replace(valid, last_physical_step_id="step.other")
 
 
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"world_id": "world.other"},
+        {"embodiment_episode_id": "episode.other"},
+        {"morphology_revision": "morph.other"},
+        {"environment_revision": "environment.other"},
+        {"solver_config_revision": "solver.other"},
+    ],
+)
+def test_projection_rejects_identity_or_revision_not_matching_retained_correlation(
+    changes: dict[str, object],
+) -> None:
+    valid = _adopted_state().body_pose_observation_projection()
+
+    with pytest.raises(ValueError, match="differ from physical-step correlation"):
+        replace(valid, **changes)
+
+
 def test_initial_owner_state_projection_has_no_fabricated_step_correlation() -> None:
     projection = _state().body_pose_observation_projection()
 
@@ -133,3 +156,4 @@ def test_initial_owner_state_projection_has_no_fabricated_step_correlation() -> 
     assert projection.last_physical_step_source_tick is None
     assert projection.environment_revision is None
     assert projection.solver_config_revision is None
+    assert projection.physical_step_correlation is None

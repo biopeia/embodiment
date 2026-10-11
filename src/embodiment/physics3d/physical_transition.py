@@ -8,38 +8,17 @@ external storage is required before those bytes are durably referenceable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 import math
+from dataclasses import dataclass
 from typing import Protocol
-from embodiment.observation import BodyPoseObservationProjection, BodyPoseSample
 
-
-@dataclass(frozen=True, slots=True)
-class PhysicalStepCorrelation:
-    """Identity and revisions for one physical execution, never a solver API."""
-
-    world_id: str
-    causal_tick: int
-    physical_step_id: str
-    body_id: str
-    embodiment_episode_id: str
-    morphology_revision: str
-    environment_revision: str
-    solver_config_revision: str
-
-    def __post_init__(self) -> None:
-        for name in (
-            "world_id", "physical_step_id", "body_id", "embodiment_episode_id",
-            "morphology_revision", "environment_revision", "solver_config_revision",
-        ):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{name} must be a non-empty string")
-            object.__setattr__(self, name, value.strip())
-        if isinstance(self.causal_tick, bool) or not isinstance(self.causal_tick, int) or self.causal_tick < 0:
-            raise ValueError("causal_tick must be a non-negative integer")
+from embodiment.observation import (
+    BodyPoseObservationProjection,
+    BodyPoseSample,
+    PhysicalStepCorrelation,
+)
 
 
 class WorldPhysicalStepContext(Protocol):
@@ -167,6 +146,7 @@ class EmbodimentPhysicalState:
             last_physical_step_source_tick=None if step is None else step.causal_tick,
             environment_revision=None if step is None else step.environment_revision,
             solver_config_revision=None if step is None else step.solver_config_revision,
+            physical_step_correlation=step,
         )
 
     def checkpoint_bytes(self) -> bytes:

@@ -32,6 +32,41 @@ def _quat_xyzw(
 
 
 @dataclass(frozen=True, slots=True)
+class PhysicalStepCorrelation:
+    """Identity and revisions for one physical execution, never a solver API."""
+
+    world_id: str
+    causal_tick: int
+    physical_step_id: str
+    body_id: str
+    embodiment_episode_id: str
+    morphology_revision: str
+    environment_revision: str
+    solver_config_revision: str
+
+    def __post_init__(self) -> None:
+        for name in (
+            "world_id",
+            "physical_step_id",
+            "body_id",
+            "embodiment_episode_id",
+            "morphology_revision",
+            "environment_revision",
+            "solver_config_revision",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} must be a non-empty string")
+            object.__setattr__(self, name, value.strip())
+        if (
+            isinstance(self.causal_tick, bool)
+            or not isinstance(self.causal_tick, int)
+            or self.causal_tick < 0
+        ):
+            raise ValueError("causal_tick must be a non-negative integer")
+
+
+@dataclass(frozen=True, slots=True)
 class BodyPoseSample:
     """Canonical Embodiment Body Pose v1 base-Body sample.
 
@@ -105,6 +140,7 @@ class BodyPoseObservationProjection:
     last_physical_step_source_tick: int | None = None
     environment_revision: str | None = None
     solver_config_revision: str | None = None
+    physical_step_correlation: PhysicalStepCorrelation | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -135,6 +171,8 @@ class BodyPoseObservationProjection:
             self.solver_config_revision,
         )
         if all(value is None for value in step_values):
+            if self.physical_step_correlation is not None:
+                raise ValueError("initial projection cannot carry a physical-step correlation")
             return
         if any(value is None for value in step_values):
             raise ValueError("physical-step projection correlation must be complete")
@@ -169,6 +207,24 @@ class BodyPoseObservationProjection:
             raise ValueError(
                 "pose sample does not identify the projected physical step"
             )
+        correlation = self.physical_step_correlation
+        if not isinstance(correlation, PhysicalStepCorrelation):
+            raise ValueError("physical-step correlation record is required")
+        if (
+            correlation.world_id != self.world_id
+            or correlation.causal_tick != self.last_physical_step_source_tick
+            or correlation.physical_step_id != self.last_physical_step_id
+            or correlation.body_id != self.body_id
+            or correlation.embodiment_episode_id != self.embodiment_episode_id
+            or correlation.morphology_revision != self.morphology_revision
+            or correlation.environment_revision != self.environment_revision
+            or correlation.solver_config_revision != self.solver_config_revision
+        ):
+            raise ValueError("projection identity/revisions differ from physical-step correlation")
 
 
-__all__ = ["BodyPoseObservationProjection", "BodyPoseSample"]
+__all__ = [
+    "BodyPoseObservationProjection",
+    "BodyPoseSample",
+    "PhysicalStepCorrelation",
+]
