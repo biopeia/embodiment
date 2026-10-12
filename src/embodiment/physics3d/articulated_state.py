@@ -25,6 +25,7 @@ from embodiment.physics3d.physical_transition import (
     SolverBodyCandidate,
     WorldPhysicalStepContext,
 )
+from embodiment.observation import BodyPoseObservationProjection
 
 
 ARTICULATED_PHYSICAL_CHECKPOINT_SCHEMA = "embodiment-articulated-physical-checkpoint-v2"
@@ -209,6 +210,33 @@ class ArticulatedEmbodimentPhysicalState:
     @property
     def checkpoint_digest(self) -> str:
         return hashlib.sha256(self.checkpoint_bytes()).hexdigest()
+
+    def body_pose_observation_projection(self) -> BodyPoseObservationProjection:
+        """Project the adopted root pose with lineage to this full owner state.
+
+        BodyPose exposes only root pose, but the source checkpoint for an
+        articulated state is the complete Embodiment-owned value (root,
+        morphology, and joints). The returned lineage therefore refers to
+        these exact articulated checkpoint bytes, not the embedded root-only
+        checkpoint. World remains responsible for verifying that reference
+        against the committed causal cut before publication.
+        """
+
+        root_projection = self.root.body_pose_observation_projection()
+        return BodyPoseObservationProjection(
+            world_id=root_projection.world_id,
+            causal_tick=root_projection.causal_tick,
+            body_id=root_projection.body_id,
+            embodiment_episode_id=root_projection.embodiment_episode_id,
+            morphology_revision=root_projection.morphology_revision,
+            source_state_sha256=self.checkpoint_digest,
+            pose=root_projection.pose,
+            last_physical_step_id=root_projection.last_physical_step_id,
+            last_physical_step_source_tick=root_projection.last_physical_step_source_tick,
+            environment_revision=root_projection.environment_revision,
+            solver_config_revision=root_projection.solver_config_revision,
+            physical_step_correlation=root_projection.physical_step_correlation,
+        )
 
     def adopt_candidate(
         self,
