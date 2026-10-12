@@ -477,3 +477,24 @@ def test_articulated_checkpoint_rejects_duplicate_json_keys() -> None:
         ArticulatedEmbodimentPhysicalState.restore_checkpoint(
             duplicate, active_morphology=_morphology()
         )
+
+
+def test_adopted_articulated_body_pose_projection_uses_full_checkpoint_lineage() -> None:
+    state = _state()
+    correlation = _correlation()
+    adopted = state.adopt_candidate(
+        _candidate(), world_context=_world_context(correlation)
+    )
+
+    projection = adopted.body_pose_observation_projection()
+
+    assert projection.source_state_sha256 == hashlib.sha256(
+        adopted.checkpoint_bytes()
+    ).hexdigest()
+    assert projection.source_state_sha256 == adopted.checkpoint_digest
+    assert projection.source_state_sha256 != adopted.root.checkpoint_digest
+    assert projection.body_id == adopted.morphology.body_id
+    assert projection.embodiment_episode_id == adopted.morphology.embodiment_episode_id
+    assert projection.morphology_revision == adopted.morphology.morphology_revision
+    assert projection.causal_tick == adopted.causal_tick == correlation.causal_tick + 1
+    assert projection.physical_step_correlation == correlation

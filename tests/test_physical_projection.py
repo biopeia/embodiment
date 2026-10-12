@@ -119,6 +119,27 @@ def test_projection_snapshots_complete_owner_state_by_stable_joint_identity() ->
     assert '<geometry><box size="0.1 0.1 0.4"/></geometry>' in projected.articulated_description
 
 
+def test_body_pose_projection_references_full_articulated_checkpoint() -> None:
+    state = _state()
+
+    projection = state.body_pose_observation_projection()
+
+    assert projection.pose == state.root.pose
+    assert projection.source_state_sha256 == state.checkpoint_digest
+    assert projection.source_state_sha256 != state.root.checkpoint_digest
+
+    changed_joint_state = ArticulatedEmbodimentPhysicalState(
+        root=state.root,
+        morphology=state.morphology,
+        joints=(JointKinematicState("joint.elbow", 0.5, -0.5),),
+    )
+    assert changed_joint_state.root.pose == state.root.pose
+    assert (
+        changed_joint_state.body_pose_observation_projection().source_state_sha256
+        != projection.source_state_sha256
+    )
+
+
 def test_projection_does_not_mutate_or_retain_mutable_morphology_mapping() -> None:
     state = _state()
     projected = project_body_physical_input(state, correlation=_correlation())
