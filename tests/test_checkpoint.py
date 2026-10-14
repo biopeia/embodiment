@@ -45,12 +45,16 @@ def test_committed_reserve_projection_uses_exact_checkpoint_and_preserves_model_
         schema_version=EmbodimentCheckpoint.OWNER_SCHEMA,
         sha256=hashlib.sha256(encoded).hexdigest(),
     )
-    projection = project_committed_reserve_state(
-        encoded,
-        owner_reference=reference,
+    cut = SimpleNamespace(
         world_id="world.alpha",
         causal_tick=7,
         commit_id="commit-7",
+        owner_checkpoint_references=(reference,),
+    )
+    projection = project_committed_reserve_state(
+        encoded,
+        committed_cut=cut,
+        owner_reference=reference,
     )
     reserve = checkpoint.body_state.operational_observation()["reserve"]
     assert projection.amount == reserve["amount"]
@@ -62,14 +66,24 @@ def test_committed_reserve_projection_uses_exact_checkpoint_and_preserves_model_
     assert projection.checkpoint_schema == "embodiment-checkpoint-v2"
     assert projection.source_owner_checkpoint_sha256 == reference.sha256
 
+    with pytest.raises(ValueError, match="not in the supplied World cut"):
+        project_committed_reserve_state(
+            encoded,
+            committed_cut=SimpleNamespace(
+                world_id="world.alpha",
+                causal_tick=7,
+                commit_id="commit-7",
+                owner_checkpoint_references=(),
+            ),
+            owner_reference=reference,
+        )
+
     reference.sha256 = "0" * 64
     with pytest.raises(ValueError, match="committed Embodiment owner reference"):
         project_committed_reserve_state(
             encoded,
+            committed_cut=cut,
             owner_reference=reference,
-            world_id="world.alpha",
-            causal_tick=7,
-            commit_id="commit-7",
         )
 
 

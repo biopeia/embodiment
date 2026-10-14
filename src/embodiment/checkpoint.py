@@ -26,6 +26,15 @@ class _CommittedCheckpointReference(Protocol):
     sha256: str
 
 
+class _CommittedWorldCutReceipt(Protocol):
+    """Structural view of World evidence; World remains the trust boundary."""
+
+    world_id: str
+    causal_tick: int
+    commit_id: str
+    owner_checkpoint_references: tuple[_CommittedCheckpointReference, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class ReserveStateObservationProjection:
     """Embodiment-owned reserve snapshot from one committed checkpoint."""
@@ -54,23 +63,29 @@ class ReserveStateObservationProjection:
 def project_committed_reserve_state(
     checkpoint_bytes: bytes,
     *,
+    committed_cut: _CommittedWorldCutReceipt,
     owner_reference: _CommittedCheckpointReference,
-    world_id: str,
-    causal_tick: int,
-    commit_id: str,
 ) -> ReserveStateObservationProjection:
     """Project reserve values only from bytes named by a committed owner ref.
 
     No morphology identity is included: EmbodimentCheckpoint v2 does not bind
-    a morphology revision to its somatic payload.
+    a morphology revision to its somatic payload. The supplied World receipt
+    provides correlation context; only World can verify commit authenticity.
     """
     if not isinstance(checkpoint_bytes, bytes):
         raise ValueError("Embodiment checkpoint snapshot must be bytes")
-    for name, value in (("world_id", world_id), ("commit_id", commit_id)):
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"{name} must be non-empty text")
+    world_id = getattr(committed_cut, "world_id", None)
+    causal_tick = getattr(committed_cut, "causal_tick", None)
+    commit_id = getattr(committed_cut, "commit_id", None)
+    cut_references = getattr(committed_cut, "owner_checkpoint_references", None)
+    if not isinstance(world_id, str) or not world_id.strip():
+        raise ValueError("World committed-cut receipt must identify a World")
     if type(causal_tick) is not int or causal_tick < 0:
-        raise ValueError("causal_tick must be a non-negative integer")
+        raise ValueError("World committed-cut receipt must identify a valid causal tick")
+    if not isinstance(commit_id, str) or not commit_id.strip():
+        raise ValueError("World committed-cut receipt must identify a commit")
+    if not isinstance(cut_references, tuple) or owner_reference not in cut_references:
+        raise ValueError("Embodiment owner reference is not in the supplied World cut")
     expected_digest = hashlib.sha256(checkpoint_bytes).hexdigest()
     if (
         getattr(owner_reference, "owner", None) != "embodiment"
