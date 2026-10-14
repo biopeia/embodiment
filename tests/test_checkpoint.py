@@ -1,4 +1,6 @@
 import json
+import hashlib
+from types import SimpleNamespace
 
 import pytest
 
@@ -7,6 +9,7 @@ from embodiment import (
     LivingBodyState,
     MetabolicLedger,
     ResourcePressure,
+    project_committed_reserve_state,
 )
 from embodiment.physiology_config import PhysiologyConfig
 
@@ -30,6 +33,44 @@ def test_checkpoint_round_trip_is_deterministic_and_preserves_episode_identity()
     assert restored.body_state.age_ticks == 7
     assert restored.metabolic_ledger.tick == 7
     assert restored.metabolic_ledger.body_state is restored.body_state
+
+
+def test_committed_reserve_projection_uses_exact_checkpoint_and_preserves_model_units():
+    checkpoint = _checkpoint()
+    encoded = checkpoint.to_bytes()
+    reference = SimpleNamespace(
+        owner="embodiment",
+        owner_identity=checkpoint.body_id,
+        checkpoint_id="body-cut-7",
+        schema_version=EmbodimentCheckpoint.OWNER_SCHEMA,
+        sha256=hashlib.sha256(encoded).hexdigest(),
+    )
+    projection = project_committed_reserve_state(
+        encoded,
+        owner_reference=reference,
+        world_id="world.alpha",
+        causal_tick=7,
+        commit_id="commit-7",
+    )
+    reserve = checkpoint.body_state.operational_observation()["reserve"]
+    assert projection.amount == reserve["amount"]
+    assert projection.capacity == reserve["capacity"]
+    assert projection.fraction == reserve["fraction"]
+    assert projection.quantity_kind == "model_amount"
+    assert projection.body_id == "body-17"
+    assert projection.episode_id == "episode-3"
+    assert projection.checkpoint_schema == "embodiment-checkpoint-v2"
+    assert projection.source_owner_checkpoint_sha256 == reference.sha256
+
+    reference.sha256 = "0" * 64
+    with pytest.raises(ValueError, match="committed Embodiment owner reference"):
+        project_committed_reserve_state(
+            encoded,
+            owner_reference=reference,
+            world_id="world.alpha",
+            causal_tick=7,
+            commit_id="commit-7",
+        )
 
 
 @pytest.mark.parametrize("payload", [b"not json", b"[]", b'{"schema_version":99}'])

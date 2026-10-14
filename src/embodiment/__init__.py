@@ -1,6 +1,10 @@
 """Physical/somatic state extraction candidate for Biopeia Embodiment."""
 
-from .checkpoint import EmbodimentCheckpoint
+from .checkpoint import (
+    EmbodimentCheckpoint,
+    ReserveStateObservationProjection,
+    project_committed_reserve_state,
+)
 from .metabolism import MetabolicLedger, MetabolicSnapshot, ResourcePressure
 from .physiology import (
     BodyStructureState,
@@ -24,6 +28,8 @@ __all__ = [
     "PhysiologyController",
     "PhysiologySnapshot",
     "ResourcePressure",
+    "ReserveStateObservationProjection",
     "VitalState",
     "absorb_material_transfer",
+    "project_committed_reserve_state",
 ]
