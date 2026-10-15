@@ -103,17 +103,11 @@ def test_payload_roundtrip_is_deterministic_and_closed() -> None:
         RenderMorphologyProjection.from_payload(payload)
 
 
-def test_payload_rejects_digest_tampering_and_unresolved_topology() -> None:
+def test_payload_rejects_digest_tampering() -> None:
     payload = _projection().to_payload()
     payload["render_geometry_sha256"] = "0" * 64
     with pytest.raises(ValueError, match="does not match"):
         RenderMorphologyProjection.from_payload(payload)
-
-    payload = _projection().to_payload()
-    payload["joints"][0]["parent_link_id"] = "missing-link"
-    with pytest.raises(ValueError, match="references must resolve"):
-        RenderMorphologyProjection.from_payload(payload)
-
 
 @pytest.mark.parametrize(
     "dimensions",
@@ -141,6 +135,16 @@ def test_projection_rejects_undeclared_topology_references() -> None:
 
     with pytest.raises(ValueError, match="undeclared morphology link"):
         _projection(invalid)
+
+
+def test_projection_allows_topology_link_without_authored_geometry() -> None:
+    source = _spec()
+    segments = dict(source.segments)
+    del segments["body.arm"]
+    projection = _projection(replace(source, segments=segments))
+
+    assert [item.segment_id for item in projection.segments] == ["body.base"]
+    assert projection.joints[0].child_link_id == "body.arm"
 
 
 def test_candidate_digest_vector_matches_rfc8785_bytes() -> None:

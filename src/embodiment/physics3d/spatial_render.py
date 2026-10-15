@@ -157,12 +157,17 @@ class RenderMorphologyProjection:
             raise ValueError("segments must have unique stable IDs in lexical order")
         if joint_ids != tuple(sorted(set(joint_ids))):
             raise ValueError("joints must have unique stable IDs in lexical order")
+        # A morphology may contain articulated carrier links without an
+        # authored SegmentSpec. Topology endpoints need not have display
+        # geometry; never synthesize a placeholder segment for them.
         links = set(segment_ids)
         for joint in self.joints:
-            if joint.parent_link_id not in links or joint.child_link_id not in links:
-                raise ValueError("render joint references must resolve to declared segments")
             if joint.parent_link_id == joint.child_link_id:
                 raise ValueError("render joint parent and child must differ")
+            links.add(joint.parent_link_id)
+            links.add(joint.child_link_id)
+        if len(links) > MAX_LINKS:
+            raise ValueError("render morphology exceeds link-count limit")
         if not isinstance(self.render_geometry_sha256, str) or not _SHA256_RE.fullmatch(self.render_geometry_sha256):
             raise ValueError("render_geometry_sha256 must be a lowercase SHA-256 digest")
         expected = _render_digest(self._render_content_payload())
