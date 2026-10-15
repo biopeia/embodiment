@@ -87,6 +87,110 @@ def test_committed_reserve_projection_uses_exact_checkpoint_and_preserves_model_
         )
 
 
+@pytest.mark.parametrize(
+    ("reference_changes", "message"),
+    [
+        ({"owner": "world"}, "committed Embodiment owner reference"),
+        ({"schema_version": "embodiment-checkpoint-v1"}, "committed Embodiment owner reference"),
+        ({"owner_identity": "body-other"}, "body identity differs"),
+        ({"checkpoint_id": ""}, "checkpoint id is required"),
+        ({"owner_identity": ""}, "owner identity is required"),
+    ],
+)
+def test_committed_reserve_projection_rejects_invalid_owner_reference(
+    reference_changes: dict[str, str], message: str
+):
+    checkpoint = _checkpoint()
+    encoded = checkpoint.to_bytes()
+    fields = {
+        "owner": "embodiment",
+        "owner_identity": checkpoint.body_id,
+        "checkpoint_id": "body-cut-7",
+        "schema_version": EmbodimentCheckpoint.OWNER_SCHEMA,
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+    fields.update(reference_changes)
+    reference = SimpleNamespace(**fields)
+    cut = SimpleNamespace(
+        world_id="world.alpha",
+        causal_tick=7,
+        commit_id="commit-7",
+        owner_checkpoint_references=(reference,),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        project_committed_reserve_state(
+            encoded,
+            committed_cut=cut,
+            owner_reference=reference,
+        )
+
+
+@pytest.mark.parametrize(
+    ("cut_changes", "message"),
+    [
+        ({"world_id": ""}, "identify a World"),
+        ({"causal_tick": -1}, "valid causal tick"),
+        ({"causal_tick": True}, "valid causal tick"),
+        ({"commit_id": ""}, "identify a commit"),
+        ({"owner_checkpoint_references": []}, "not in the supplied World cut"),
+    ],
+)
+def test_committed_reserve_projection_rejects_incomplete_cut_context(
+    cut_changes: dict[str, object], message: str
+):
+    checkpoint = _checkpoint()
+    encoded = checkpoint.to_bytes()
+    reference = SimpleNamespace(
+        owner="embodiment",
+        owner_identity=checkpoint.body_id,
+        checkpoint_id="body-cut-7",
+        schema_version=EmbodimentCheckpoint.OWNER_SCHEMA,
+        sha256=hashlib.sha256(encoded).hexdigest(),
+    )
+    fields: dict[str, object] = {
+        "world_id": "world.alpha",
+        "causal_tick": 7,
+        "commit_id": "commit-7",
+        "owner_checkpoint_references": (reference,),
+    }
+    fields.update(cut_changes)
+
+    with pytest.raises(ValueError, match=message):
+        project_committed_reserve_state(
+            encoded,
+            committed_cut=SimpleNamespace(**fields),
+            owner_reference=reference,
+        )
+
+
+def test_committed_reserve_projection_does_not_claim_unbound_morphology():
+    checkpoint = _checkpoint()
+    encoded = checkpoint.to_bytes()
+    reference = SimpleNamespace(
+        owner="embodiment",
+        owner_identity=checkpoint.body_id,
+        checkpoint_id="body-cut-7",
+        schema_version=EmbodimentCheckpoint.OWNER_SCHEMA,
+        sha256=hashlib.sha256(encoded).hexdigest(),
+    )
+    cut = SimpleNamespace(
+        world_id="world.alpha",
+        causal_tick=7,
+        commit_id="commit-7",
+        owner_checkpoint_references=(reference,),
+    )
+
+    projection = project_committed_reserve_state(
+        encoded,
+        committed_cut=cut,
+        owner_reference=reference,
+    )
+
+    assert not hasattr(projection, "morphology_id")
+    assert not hasattr(projection, "morphology_revision")
+
+
 @pytest.mark.parametrize("payload", [b"not json", b"[]", b'{"schema_version":99}'])
 def test_checkpoint_rejects_malformed_or_unsupported_payload(payload: bytes):
     with pytest.raises(ValueError):
