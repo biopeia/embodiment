@@ -1,10 +1,10 @@
-"""Embodiment-owned, static render-morphology projection.
+"""Embodiment-owned render projections.
 
-This module exposes only the explicitly authored box geometry and revolute
-joint topology needed for a static morphology view. It does not calculate
-kinematics, create link transforms, or prove a World commit/cut. Dynamic link
-poses remain unavailable until the World adapter passes already-computed
-same-step transforms through the approved Embodiment adoption boundary.
+This module exposes explicitly authored box geometry and revolute joint
+topology, plus validation/binding of already-computed dynamic link poses. It
+never calculates kinematics or proves a World commit/cut. Dynamic pose values
+are candidates from the same physical step; World remains responsible for
+binding a published sample to a confirmed causal cut.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from typing import Any
 import rfc8785
 
 from embodiment.physics3d.articulated_state import ActiveArticulatedMorphology
+from embodiment.physics3d.physical_transition import WorldPhysicalStepContext
 
 
 CONTRACT_REVISION = "embodiment.render_morphology/v1"
@@ -28,6 +29,8 @@ MAX_LINKS = 128
 MAX_SEGMENTS = 128
 MAX_REVOLUTE_JOINTS = 127
 MAX_DESCRIPTOR_BYTES = 256 * 1024
+MAX_DYNAMIC_POSE_BYTES = 256 * 1024
+QUATERNION_NORM_TOLERANCE = 1e-6
 _DIGEST_PREFIX = b"biopeia:embodiment.render_morphology/v1\n"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -263,6 +266,64 @@ class RenderMorphologyProjection:
 
         return rfc8785.dumps(self.to_payload())
 
+    def validate_dynamic_pose_candidate(
+        self,
+        *,
+        world_context: WorldPhysicalStepContext,
+        poses: tuple[RenderLinkPose, ...],
+    ) -> RenderDynamicPoseCandidate:
+        """Validate World-supplied poses against this exact static subset.
+
+        This is deliberately a candidate, not a committed-cut receipt. The
+        caller must supply transforms computed by its physical solver; this
+        method only validates, orders, and binds them to this morphology.
+        """
+
+        candidate = RenderDynamicPoseCandidate(
+            body_id=self.body_id,
+            embodiment_episode_id=self.embodiment_episode_id,
+            morphology_revision=self.morphology_revision,
+            geometry_revision=self.geometry_revision,
+            render_geometry_sha256=self.render_geometry_sha256,
+            source_world_id=world_context.world_id,
+            physical_step_id=world_context.physical_step_id,
+            environment_revision=world_context.environment_revision,
+            solver_config_revision=world_context.solver_config_revision,
+            source_causal_tick=world_context.source_causal_tick,
+            target_causal_tick=world_context.target_causal_tick,
+            poses=poses,
+            expected_segment_ids=tuple(item.segment_id for item in self.segments),
+        )
+        self.validate_dynamic_pose_candidate_binding(candidate)
+        if (
+            world_context.body_id != self.body_id
+            or world_context.embodiment_episode_id != self.embodiment_episode_id
+            or world_context.morphology_revision != self.morphology_revision
+        ):
+            raise ValueError("World step context identity does not match static morphology")
+        return candidate
+
+    def validate_dynamic_pose_candidate_binding(
+        self, candidate: RenderDynamicPoseCandidate
+    ) -> None:
+        """Reject candidate identities or link sets that differ from this descriptor."""
+
+        if not isinstance(candidate, RenderDynamicPoseCandidate):
+            raise TypeError("candidate must be a RenderDynamicPoseCandidate")
+        expected = (
+            self.body_id, self.embodiment_episode_id, self.morphology_revision,
+            self.geometry_revision, self.render_geometry_sha256,
+        )
+        actual = (
+            candidate.body_id, candidate.embodiment_episode_id,
+            candidate.morphology_revision, candidate.geometry_revision,
+            candidate.render_geometry_sha256,
+        )
+        if actual != expected:
+            raise ValueError("dynamic pose candidate identity/revision does not match static morphology")
+        if candidate.expected_segment_ids != tuple(item.segment_id for item in self.segments):
+            raise ValueError("dynamic pose candidate renderable links do not match static morphology")
+
     @classmethod
     def from_payload(cls, payload: object) -> RenderMorphologyProjection:
         """Validate a closed descriptor payload and its render-only digest."""
@@ -295,6 +356,117 @@ class RenderMorphologyProjection:
             segments=segments,
             joints=joints,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class RenderLinkPose:
+    """One solver-computed world-from-link transform for a renderable link."""
+
+    segment_id: str
+    translation_m: tuple[float, float, float]
+    orientation_xyzw: tuple[float, float, float, float]
+
+    def __post_init__(self) -> None:
+        _identity(self.segment_id, "segment_id")
+        translation = _vector(self.translation_m, 3, "translation_m")
+        orientation = _vector(self.orientation_xyzw, 4, "orientation_xyzw")
+        norm = math.sqrt(sum(value * value for value in orientation))
+        if not math.isfinite(norm) or not math.isclose(
+            norm, 1.0, rel_tol=0.0, abs_tol=QUATERNION_NORM_TOLERANCE
+        ):
+            raise ValueError("orientation_xyzw must be a unit quaternion")
+        object.__setattr__(self, "translation_m", translation)
+        object.__setattr__(self, "orientation_xyzw", orientation)
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "segment_id": self.segment_id,
+            "translation_m": list(self.translation_m),
+            "orientation_xyzw": list(self.orientation_xyzw),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RenderDynamicPoseCandidate:
+    """Complete, validated same-step link poses; not evidence of World commit."""
+
+    body_id: str
+    embodiment_episode_id: str
+    morphology_revision: str
+    geometry_revision: str
+    render_geometry_sha256: str
+    source_world_id: str
+    physical_step_id: str
+    environment_revision: str
+    solver_config_revision: str
+    source_causal_tick: int
+    target_causal_tick: int
+    poses: tuple[RenderLinkPose, ...]
+    expected_segment_ids: tuple[str, ...]
+    # Internal validation aid; not serialized or interpreted as World proof.
+    contract_revision: str = "embodiment.render_link_pose_candidate/v1"
+    reference_frame: str = "physics3d.world"
+    coordinate_system: str = COORDINATE_SYSTEM
+    length_unit: str = LENGTH_UNIT
+
+    def __post_init__(self) -> None:
+        for field in (
+            "body_id", "embodiment_episode_id", "morphology_revision",
+            "geometry_revision", "source_world_id", "physical_step_id",
+            "environment_revision", "solver_config_revision",
+        ):
+            _identity(getattr(self, field), field)
+        if not isinstance(self.render_geometry_sha256, str) or not _SHA256_RE.fullmatch(self.render_geometry_sha256):
+            raise ValueError("render_geometry_sha256 must be a lowercase SHA-256 digest")
+        if self.contract_revision != "embodiment.render_link_pose_candidate/v1":
+            raise ValueError("unsupported dynamic pose candidate revision")
+        if self.reference_frame != "physics3d.world" or self.coordinate_system != COORDINATE_SYSTEM or self.length_unit != LENGTH_UNIT:
+            raise ValueError("unsupported dynamic pose reference frame, basis, or unit")
+        if (
+            type(self.source_causal_tick) is not int
+            or type(self.target_causal_tick) is not int
+            or self.source_causal_tick < 0
+            or self.target_causal_tick != self.source_causal_tick + 1
+        ):
+            raise ValueError("dynamic pose candidate must identify adjacent source and target ticks")
+        if not isinstance(self.poses, tuple) or any(not isinstance(item, RenderLinkPose) for item in self.poses):
+            raise ValueError("poses must be a tuple of RenderLinkPose values")
+        if not isinstance(self.expected_segment_ids, tuple):
+            raise ValueError("expected_segment_ids must be a tuple")
+        expected = tuple(sorted(set(self.expected_segment_ids)))
+        actual = tuple(item.segment_id for item in self.poses)
+        if self.expected_segment_ids != expected or actual != expected:
+            raise ValueError("dynamic poses must exactly match sorted renderable segment IDs")
+        if len(actual) > MAX_SEGMENTS:
+            raise ValueError("dynamic pose candidate exceeds render segment limit")
+        if len(rfc8785.dumps(self.to_payload())) > MAX_DYNAMIC_POSE_BYTES:
+            raise ValueError("canonical dynamic pose candidate exceeds byte limit")
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "contract_revision": self.contract_revision,
+            "body_id": self.body_id,
+            "embodiment_episode_id": self.embodiment_episode_id,
+            "morphology_revision": self.morphology_revision,
+            "geometry_revision": self.geometry_revision,
+            "render_geometry_sha256": self.render_geometry_sha256,
+            "source_world_id": self.source_world_id,
+            "physical_step_id": self.physical_step_id,
+            "environment_revision": self.environment_revision,
+            "solver_config_revision": self.solver_config_revision,
+            "source_causal_tick": self.source_causal_tick,
+            "target_causal_tick": self.target_causal_tick,
+            "reference_frame": self.reference_frame,
+            "coordinate_system": self.coordinate_system,
+            "length_unit": self.length_unit,
+            "completeness": "complete",
+            "poses": [item.to_payload() for item in self.poses],
+        }
+
+    def canonical_bytes(self) -> bytes:
+        """Bounded candidate encoding; this is not a World cut proof digest."""
+
+        return rfc8785.dumps(self.to_payload())
 
 
 def _render_content_payload(
