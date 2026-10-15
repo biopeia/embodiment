@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,6 +10,8 @@ from embodiment.physics3d.articulated_state import ActiveArticulatedMorphology
 from embodiment.physics3d.mechanics import JointSpec, JointTopology, SegmentSpec
 from embodiment.physics3d.spatial_render import (
     CONTRACT_REVISION,
+    RenderDynamicPoseCandidate,
+    RenderLinkPose,
     RenderMorphologyProjection,
     RenderSegment,
     _render_digest,
@@ -145,6 +148,140 @@ def test_projection_allows_topology_link_without_authored_geometry() -> None:
 
     assert [item.segment_id for item in projection.segments] == ["body.base"]
     assert projection.joints[0].child_link_id == "body.arm"
+
+
+def _pose_candidate(**overrides) -> RenderDynamicPoseCandidate:
+    projection = _projection()
+    context = SimpleNamespace(
+        world_id=overrides.pop("source_world_id", "world.test"),
+        physical_step_id=overrides.pop("physical_step_id", "step.1"),
+        environment_revision=overrides.pop("environment_revision", "environment-r1"),
+        solver_config_revision=overrides.pop("solver_config_revision", "solver-r1"),
+        source_causal_tick=overrides.pop("source_causal_tick", 0),
+        target_causal_tick=overrides.pop("target_causal_tick", 1),
+        body_id=overrides.pop("body_id", projection.body_id),
+        embodiment_episode_id=overrides.pop("embodiment_episode_id", projection.embodiment_episode_id),
+        morphology_revision=overrides.pop("morphology_revision", projection.morphology_revision),
+    )
+    return projection.validate_dynamic_pose_candidate(
+        world_context=context,
+        poses=(
+            RenderLinkPose("body.arm", (1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+            RenderLinkPose("body.base", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        ),
+        **overrides,
+    )
+
+
+def test_dynamic_pose_candidate_binds_complete_authentic_sample_to_static_identity() -> None:
+    static = _projection()
+    candidate = _pose_candidate()
+    payload = candidate.to_payload()
+
+    assert candidate.body_id == static.body_id
+    assert candidate.embodiment_episode_id == static.embodiment_episode_id
+    assert candidate.morphology_revision == static.morphology_revision
+    assert candidate.geometry_revision == static.geometry_revision
+    assert candidate.render_geometry_sha256 == static.render_geometry_sha256
+    assert [pose["segment_id"] for pose in payload["poses"]] == ["body.arm", "body.base"]
+    assert payload["completeness"] == "complete"
+    assert payload["reference_frame"] == "physics3d.world"
+    assert payload["coordinate_system"] == "right_handed_z_up"
+    assert payload["length_unit"] == "m"
+    assert payload["poses"][0] == {
+        "segment_id": "body.arm",
+        "translation_m": [1.0, 0.0, 0.0],
+        "orientation_xyzw": [0.0, 0.0, 0.0, 1.0],
+    }
+    assert len(candidate.canonical_bytes()) <= 256 * 1024
+
+
+@pytest.mark.parametrize(
+    "poses",
+    [
+        (),
+        (RenderLinkPose("body.arm", (1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),),
+        (
+            RenderLinkPose("body.arm", (1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+            RenderLinkPose("body.base", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+            RenderLinkPose("extra", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        ),
+    ],
+)
+def test_dynamic_pose_candidate_rejects_missing_or_extra_ids(poses) -> None:
+    with pytest.raises(ValueError, match="exactly match"):
+        _projection().validate_dynamic_pose_candidate(
+            world_context=SimpleNamespace(
+                world_id="world.test", physical_step_id="step.1",
+                environment_revision="environment-r1", solver_config_revision="solver-r1",
+                source_causal_tick=0, target_causal_tick=1,
+                body_id="body.test", embodiment_episode_id="episode.test",
+                morphology_revision="morphology-r1",
+            ),
+            poses=poses,
+        )
+
+
+def test_dynamic_pose_candidate_rejects_duplicate_ids() -> None:
+    pose = RenderLinkPose("body.arm", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+    with pytest.raises(ValueError, match="exactly match"):
+        _projection().validate_dynamic_pose_candidate(
+            world_context=SimpleNamespace(
+                world_id="world.test", physical_step_id="step.1",
+                environment_revision="environment-r1", solver_config_revision="solver-r1",
+                source_causal_tick=0, target_causal_tick=1,
+                body_id="body.test", embodiment_episode_id="episode.test",
+                morphology_revision="morphology-r1",
+            ),
+            poses=(pose, pose),
+        )
+
+
+def test_dynamic_pose_candidate_rejects_mismatched_static_identity_or_revision() -> None:
+    static = _projection()
+    candidate = _pose_candidate()
+    for changed in (
+        replace(candidate, body_id="body.other"),
+        replace(candidate, embodiment_episode_id="episode.other"),
+        replace(candidate, morphology_revision="morphology-r2"),
+        replace(candidate, geometry_revision="render-r2"),
+        replace(candidate, render_geometry_sha256="0" * 64),
+    ):
+        with pytest.raises(ValueError, match="identity/revision"):
+            static.validate_dynamic_pose_candidate_binding(changed)
+
+
+def test_dynamic_pose_candidate_rejects_non_adjacent_step_context() -> None:
+    with pytest.raises(ValueError, match="adjacent"):
+        _projection().validate_dynamic_pose_candidate(
+            world_context=SimpleNamespace(
+                world_id="world.test", physical_step_id="step.1",
+                environment_revision="environment-r1", solver_config_revision="solver-r1",
+                source_causal_tick=1, target_causal_tick=3,
+                body_id="body.test", embodiment_episode_id="episode.test",
+                morphology_revision="morphology-r1",
+            ),
+            poses=(RenderLinkPose("body.arm", (1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+                   RenderLinkPose("body.base", (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))),
+        )
+
+
+def test_dynamic_pose_candidate_rejects_world_context_from_other_morphology() -> None:
+    with pytest.raises(ValueError, match="World step context identity"):
+        _pose_candidate(morphology_revision="morphology-r2")
+
+
+@pytest.mark.parametrize(
+    "translation,orientation",
+    [
+        ((float("nan"), 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+        ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 0.0)),
+        ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 2.0)),
+    ],
+)
+def test_render_link_pose_rejects_nonfinite_translation_or_nonunit_quaternion(translation, orientation) -> None:
+    with pytest.raises(ValueError):
+        RenderLinkPose("body.base", translation, orientation)
 
 
 def test_candidate_digest_vector_matches_rfc8785_bytes() -> None:
