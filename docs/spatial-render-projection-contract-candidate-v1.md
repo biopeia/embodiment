@@ -69,14 +69,14 @@ All joint link references must identify declared Embodiment links. The topology 
 
 A dynamic projection contains:
 
-- the static binding tuple (`body_id`, `embodiment_episode_id`, `morphology_revision`, `geometry_revision`, `render_geometry_sha256`);
-- `source_world_id` and an opaque `confirmed_cut_reference` supplied/validated by World under #162 (not authored or interpreted by Embodiment);
+- the exact static binding tuple (`body_id`, `embodiment_episode_id`, `morphology_revision`, `geometry_revision`, `render_geometry_sha256`); the consumer must resolve the static descriptor for that identity and require exact equality before applying any pose;
+- `source_world_id` and a World-authored opaque `confirmed_cut_reference` supplied/validated under #162 (not authored or interpreted by Embodiment);
 - `physical_step_id` as step provenance only, never as proof of commit;
 - `reference_frame = physics3d.world`, `length_unit = m`, right-handed `+Z` basis;
 - one pose for **each and only each renderable `segment_id`** in the static descriptor: `segment_id`, translation `[x,y,z]` metres, and unit quaternion `orientation_xyzw` describing the segment link frame orientation in the reference frame (`R_world_from_link`, maps link-local vectors into world coordinates); and
 - an explicit completeness state that is either `complete` or rejected/unavailable. Partial transform sets are not renderable as an articulated body.
 
-The consumer must verify exact identity/revision/digest matches, exact link-set equality, finite translation, a unit quaternion within a documented tolerance, and World’s exact-cut proof before composing/claiming a coherent scene. Quaternion antipodes `q` and `-q` denote the same rotation; the dynamic records are not a historical stream and are not sorted by arrival time into a causal history.
+The consumer must verify exact static identity/revision/digest matches, exact link-set equality, finite translation, a unit quaternion within a documented tolerance, and World’s exact-cut proof before composing/claiming a coherent scene. The static `render_geometry_sha256` binds the dynamic set to the geometry content only; it is not the digest of the dynamic poses and is not a World cut proof. The selected World cut must bind the particular dynamic transform sample (or a World-authorized content identity for it) to that exact confirmed cut. World #162 owns the cut-reference/proof and any canonicalization or digest needed for that binding; Embodiment does not mint a cut token, assert post-commit status, or define a second cut-evidence layer. Until that World-authored binding is specified and verifiable by the consumer, the dynamic pose set is not eligible for a causally coherent scene. Quaternion antipodes `q` and `-q` denote the same rotation; the dynamic records are not a historical stream and are not sorted by arrival time into a causal history.
 
 ### Producer and authority split (integration dependency)
 
@@ -104,7 +104,7 @@ Reject over-limit input before constructing/publishing a projection. These per-f
 
 `render_geometry_sha256` is lowercase SHA-256 over a domain-separated canonical serialization of exactly the static **render subset**, not the dynamic pose or identity metadata. The preimage object contains `contract_revision`, `schema_version`, `coordinate_system`, `length_unit`, `segments`, and `joints`; arrays are sorted by stable ID, and each object has only its declared fields. `body_id`, episode, morphology/geometry revisions and any World/cut identifiers are checked separately and are not geometry content. Unknown fields are rejected before digesting.
 
-Candidate byte canonicalization: UTF-8 RFC 8785 JSON Canonicalization Scheme (JCS), no BOM or trailing newline, finite IEEE-754 numbers only, no NaN/Infinity, no rounding/truncation, zero normalized per JCS, exact Unicode strings with no silent normalization. Prefix bytes are `biopeia:embodiment.render_morphology/v1\n`; hash `prefix || JCS(render-subset-object)`. This avoids depending on Python-only `json.dumps` formatting. The current full `articulated_body_spec_sha256` is explicitly not reused.
+Candidate byte canonicalization for the **static geometry digest only**: UTF-8 RFC 8785 JSON Canonicalization Scheme (JCS), no BOM or trailing newline, finite IEEE-754 numbers only, no NaN/Infinity, no rounding/truncation, zero normalized per JCS, exact Unicode strings with no silent normalization. Prefix bytes are `biopeia:embodiment.render_morphology/v1\n`; hash exactly `prefix || JCS(render-subset-object)`. This avoids depending on Python-only `json.dumps` formatting. The current full `articulated_body_spec_sha256` is explicitly not reused. This layer does not serialize or hash dynamic poses and does not establish their association with a World cut. Any dynamic-payload digest or canonical bytes used by a World cut proof belong to World #162 and remain unspecified here; do not infer one from this static digest.
 
 One simple candidate conformance vector (the sample is illustrative, not a current morphology). It uses exactly the candidate digest field set above; `joints` is empty and the field names match the proposed descriptor:
 
@@ -142,9 +142,9 @@ These are acceptance vectors for later owned tests; no tests for a nonexistent p
 ## Owner decisions still required before this is a normative contract
 
 1. Confirm/revise exact abstract field set, names, local frame meanings, identity local rotations encoded today as zero RPY, axis frame and right-hand angle convention.
-2. Confirm the separate `geometry_revision` lifecycle, and whether the render digest uses JCS exactly as proposed.
+2. Confirm the separate `geometry_revision` lifecycle, and whether the static render digest uses JCS exactly as proposed.
 3. Confirm the hard caps and digest byte bound; these numbers are proposed, not silently adopted from Observation’s cap.
-4. Confirm the World-produced same-step transform → Embodiment-validation boundary and acceptance of the relevant MuJoCo link frame as the transform source. This is a cross-domain integration dependency; it is not settled solely by Embodiment’s geometry authority.
+4. Confirm the World-produced same-step transform → Embodiment-validation boundary and acceptance of the relevant MuJoCo link frame as the transform source. World #162 must also specify how its cut proof binds that particular dynamic transform sample to the confirmed cut. These are cross-domain integration dependencies; they are not settled solely by Embodiment’s geometry authority. The World cut proof must not be confused with or replaced by `render_geometry_sha256`.
 5. Specify which links are renderable when carrier/fixed links lack an authored segment shape, and whether the root/body frame can be a geometry segment.
 6. Coordinate with World #162 on the exact post-commit cut proof and with Observation #37 on passive transport limits. This document provides no substitute token or access rule.
 
