@@ -205,10 +205,8 @@ class MetabolicLedger:
             raise ValueError("metabolic charge must be non-negative")
         self._spent[kind] = min(self._capacity[kind] * 2.0, self._spent[kind] + amount)
         self._reserve[kind] = max(-self._capacity[kind], self._reserve[kind] - amount)
-        self._body_state.energy_reserve = max(
-            0.0,
-            self._body_state.energy_reserve - amount,
-        )
+        if amount > 0.0:
+            self._body_state.consume_energy(amount)
 
     def _accept_physical_energy(self, amount: float) -> float:
         """Increase the one conserved body-energy pool and return accepted input."""

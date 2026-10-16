@@ -230,19 +230,17 @@ class LivingBodyState:
             if self.vital_state is VitalState.DEAD:
                 raise ValueError("death is irreversible")
             return
-        self.mark_dead(self.age_ticks)
+        self.mark_dead()
 
-    def mark_dead(self, tick: int) -> None:
+    def mark_dead(self) -> None:
         if self.vital_state is VitalState.DEAD:
             return
         self.vital_state = VitalState.DEAD
-        self.death_tick = int(tick)
+        self.death_tick = self.age_ticks
         self.transitions += 1
 
-    def transition(self, state: VitalState, *, tick: int) -> None:
-        """Transition physical viability using a Body-local age tick."""
-        if isinstance(tick, bool) or not isinstance(tick, int) or tick < 0:
-            raise ValueError("physiology transition tick must be Body-local")
+    def transition(self, state: VitalState) -> None:
+        """Transition physical viability at this state's Body-local age tick."""
         state = VitalState(state)
         if self.vital_state is VitalState.DEAD:
             return
@@ -250,7 +248,7 @@ class LivingBodyState:
             self.vital_state = state
             self.transitions += 1
             if state is VitalState.DEAD:
-                self.death_tick = int(tick)
+                self.death_tick = self.age_ticks
 
     def consume_energy(self, amount: float) -> float:
         amount = float(amount)
@@ -258,8 +256,8 @@ class LivingBodyState:
             raise ValueError("energy consumption must be finite and non-negative")
         consumed = min(self.energy_reserve, amount)
         self.energy_reserve -= consumed
-        if self.energy_reserve <= 0.0:
-            self.mark_dead(self.age_ticks)
+        if amount > 0.0 and self.energy_reserve <= 0.0:
+            self.mark_dead()
         return consumed
 
     def add_energy(self, amount: float) -> float:
@@ -304,7 +302,7 @@ class LivingBodyState:
         else:
             self.structural_integrity = max(0.0, min(1.0, self.structural_integrity + delta))
         if self.structural_integrity <= 0.0:
-            self.mark_dead(self.age_ticks)
+            self.mark_dead()
 
     def apply_wear(self, amount: float) -> None:
         amount = float(amount)
@@ -448,7 +446,6 @@ class PhysiologyController:
         self,
         metabolism: MetabolicSnapshot,
         *,
-        tick: int,
         resting: bool = False,
     ) -> PhysiologySnapshot:
         if self.state is VitalState.DEAD:
@@ -464,7 +461,7 @@ class PhysiologyController:
             next_state = VitalState.STRESSED
         else:
             next_state = VitalState.ACTIVE
-        self._body_state.transition(next_state, tick=tick)
+        self._body_state.transition(next_state)
         return self.snapshot()
 
     def snapshot(self) -> PhysiologySnapshot:
