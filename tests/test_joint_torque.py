@@ -10,6 +10,8 @@ from embodiment.physics3d.joint_torque import (
     JointTorqueChannelBinding,
     JointTorqueInputChannel,
     JointTorqueRequest,
+    NoActuationProjection,
+    project_no_actuation,
     project_joint_torque_command,
 )
 from embodiment.physics3d.mechanics import JointSpec, JointTopology, SegmentSpec
@@ -91,6 +93,29 @@ def test_projects_explicit_sparse_joint_torque_and_is_order_independent():
 
 def test_omitted_channel_remains_no_command():
     assert project_joint_torque_command(request(channels=()), binding(), morphology()).channels == ()
+
+
+def test_projects_explicit_no_actuation_against_active_morphology():
+    active = morphology()
+    projection = project_no_actuation(binding(active), active, issued_at_tick=1224)
+    assert projection == NoActuationProjection(
+        "binding-1", binding(active).fingerprint, "body-1", "episode-1", "morph-1", 1224
+    )
+
+
+def test_no_actuation_rejects_stale_incomplete_or_invalid_projection():
+    with pytest.raises(ValueError, match="body, episode and morphology revision"):
+        project_no_actuation(binding(), morphology("morph-old"), issued_at_tick=1)
+    incomplete = EmbodimentJointTorqueBinding(
+        "binding-1", "body-1", "episode-1", "morph-1", "surface-1",
+        (JointTorqueChannelBinding("motor-left", "joint.left", (0, 1, 0)),),
+    )
+    with pytest.raises(ValueError, match="cover every active joint"):
+        project_no_actuation(incomplete, morphology(), issued_at_tick=1)
+    with pytest.raises(ValueError, match="non-negative causal tick"):
+        project_no_actuation(binding(), morphology(), issued_at_tick=-1)
+    with pytest.raises(ValueError, match="non-negative causal tick"):
+        NoActuationProjection("binding", "fingerprint", "body", "episode", "morph", -1)
 
 
 def test_binding_checkpoint_is_strict_and_roundtrips():

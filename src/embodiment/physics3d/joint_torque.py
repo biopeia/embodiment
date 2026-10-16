@@ -186,6 +186,65 @@ class JointTorqueCandidate:
     channels: tuple[JointTorqueCommand, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class NoActuationProjection:
+    """Explicit Embodiment-owned authorization for an unactuated physical step.
+
+    This is not a motor command or a request to hold position. It identifies
+    the active physical binding and the causal source tick to which the
+    no-actuation projection applies.
+    """
+
+    binding_id: str
+    binding_fingerprint: str
+    body_id: str
+    embodiment_episode_id: str
+    morphology_revision: str
+    issued_at_tick: int
+
+    def __post_init__(self) -> None:
+        for name in ("binding_id", "binding_fingerprint", "body_id", "embodiment_episode_id", "morphology_revision"):
+            _text(getattr(self, name), name)
+        if type(self.issued_at_tick) is not int or self.issued_at_tick < 0:
+            raise ValueError("issued_at_tick must be a non-negative causal tick")
+
+
+def project_no_actuation(
+    binding: EmbodimentJointTorqueBinding,
+    active_morphology: ActiveArticulatedMorphology,
+    *,
+    issued_at_tick: int,
+) -> NoActuationProjection:
+    """Validate current Embodiment applicability for an explicit no-actuation result."""
+    if not isinstance(binding, EmbodimentJointTorqueBinding):
+        raise ValueError("no-actuation projection requires an EmbodimentJointTorqueBinding")
+    if not isinstance(active_morphology, ActiveArticulatedMorphology):
+        raise ValueError("no-actuation projection requires active Embodiment morphology")
+    if type(issued_at_tick) is not int or issued_at_tick < 0:
+        raise ValueError("issued_at_tick must be a non-negative causal tick")
+    if (binding.body_id, binding.embodiment_episode_id, binding.morphology_revision) != (
+        active_morphology.body_id, active_morphology.embodiment_episode_id, active_morphology.morphology_revision
+    ):
+        raise ValueError("no-actuation binding does not match active body, episode and morphology revision")
+    joints = {joint.name: joint for joint in active_morphology.spec.joint_specs}
+    if {channel.joint_id for channel in binding.channels} != set(joints):
+        raise ValueError("no-actuation binding must explicitly cover every active joint")
+    for channel in binding.channels:
+        joint = joints.get(channel.joint_id)
+        if joint is None:
+            raise ValueError("binding references a joint outside active morphology")
+        if tuple(joint.axis) != channel.axis:
+            raise ValueError("binding axis differs from active morphology joint axis")
+    return NoActuationProjection(
+        binding.binding_id,
+        binding.fingerprint,
+        active_morphology.body_id,
+        active_morphology.embodiment_episode_id,
+        active_morphology.morphology_revision,
+        issued_at_tick,
+    )
+
+
 def project_joint_torque_command(
     command: JointTorqueRequest,
     binding: EmbodimentJointTorqueBinding,
