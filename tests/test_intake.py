@@ -38,7 +38,7 @@ def test_transfer_for_different_body_is_rejected_without_state_change():
 
 def test_matching_transfer_to_dead_body_is_not_accepted():
     body = LivingBodyState(energy_reserve=0.0)
-    body.mark_dead(0)
+    body.mark_dead()
     before = body.checkpoint()
     transfer = MaterialTransfer(
         source_id="world:cell-1",
