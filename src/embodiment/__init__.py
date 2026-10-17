@@ -1,6 +1,7 @@
 """Physical/somatic state extraction candidate for Biopeia Embodiment."""
 
 from .checkpoint import (
+    EmbodimentAdoptionBindingV1,
     EmbodimentCheckpoint,
     ReserveStateObservationProjection,
     project_committed_reserve_state,
@@ -19,6 +20,7 @@ from .intake import MaterialTransfer, absorb_material_transfer
 __all__ = [
     "BodyStructureState",
     "EmbodimentCheckpoint",
+    "EmbodimentAdoptionBindingV1",
     "DEFAULT_PHYSIOLOGY_CONFIG",
     "LivingBodyState",
     "MaterialTransfer",
