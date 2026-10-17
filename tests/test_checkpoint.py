@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from embodiment import (
+    EmbodimentAdoptionBindingV1,
     EmbodimentCheckpoint,
     LivingBodyState,
     MetabolicLedger,
@@ -19,6 +20,47 @@ def _checkpoint() -> EmbodimentCheckpoint:
     ledger = MetabolicLedger(body_state=body, tick=7)
     ledger.charge("cognition", 0.2)
     return EmbodimentCheckpoint("body-17", "episode-3", body, ledger)
+
+
+def _binding() -> EmbodimentAdoptionBindingV1:
+    return EmbodimentAdoptionBindingV1(
+        world_id="world.alpha",
+        source_causal_tick=6,
+        target_causal_tick=7,
+        commit_id="commit-7",
+        physical_step_id="physical-7",
+        body_id="body-17",
+        episode_id="episode-3",
+        morphology_revision="morphology-r1",
+        physical_checkpoint_sha256="a" * 64,
+        reserve_checkpoint_sha256="b" * 64,
+    )
+
+
+def test_adoption_binding_is_canonical_and_strictly_versioned():
+    binding = _binding()
+    encoded = binding.to_bytes()
+    assert EmbodimentAdoptionBindingV1.from_bytes(encoded) == binding
+    assert EmbodimentAdoptionBindingV1.from_bytes(encoded).to_bytes() == encoded
+    assert EmbodimentAdoptionBindingV1.validate_checkpoint(
+        encoded, "body-17", EmbodimentAdoptionBindingV1.OWNER_SCHEMA
+    )
+    assert not EmbodimentAdoptionBindingV1.validate_checkpoint(
+        encoded, "body-other", EmbodimentAdoptionBindingV1.OWNER_SCHEMA
+    )
+
+
+@pytest.mark.parametrize("changes", [
+    {"target_causal_tick": 8},
+    {"source_causal_tick": True},
+    {"physical_checkpoint_sha256": "A" * 64},
+    {"reserve_checkpoint_sha256": "not-a-digest"},
+])
+def test_adoption_binding_rejects_inconsistent_values(changes):
+    from dataclasses import replace
+
+    with pytest.raises(ValueError):
+        replace(_binding(), **changes)
 
 
 def test_checkpoint_round_trip_is_deterministic_and_preserves_episode_identity():
